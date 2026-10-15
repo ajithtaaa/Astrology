@@ -22,13 +22,13 @@ module.exports = async (req, res) => {
       const m = await pay.claimByUtr(o, cleanUtr);
       if (m.ok) return send(res, 200, pay.issueToken(o, cleanUtr));
       if (m.found) return send(res, 409, { error: m.reason === 'used' ? 'utr_used' : 'amount_low' });
-      console.log(`[payment] waiting order=${o.id} amount=${(o.paise / 100).toFixed(2)} utr=${cleanUtr}`);
-      if (pay.AUTO_UNLOCK || !pay.webhookMode) {
+      console.log(`[payment] waiting order=${o.id} amount=${pay.rupees(o.paise)} utr=${cleanUtr}`);
+      if (pay.AUTO_UNLOCK || !pay.webhookMode()) {
         await pay.markPaid(o.id, cleanUtr, 'trust');
         return send(res, 200, pay.issueToken(o, cleanUtr));
       }
     }
-    send(res, 202, { pending: true, orderId: o.id, expired: o.exp < Date.now(), whatsapp: process.env.OWNER_WHATSAPP || null });
+    send(res, 202, { pending: true, orderId: o.id, expired: o.exp < Date.now(), whatsapp: (await require('../lib/settings').getSettings()).whatsapp || null });
   } catch (e) {
     send(res, 400, { error: e.message });
   }

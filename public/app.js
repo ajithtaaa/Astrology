@@ -316,6 +316,7 @@
           <p class="fine">UPI ആപ്പിലെ ഇടപാട് വിവരങ്ങളിൽ കാണുന്ന 12 അക്ക UTR / UPI Reference നമ്പർ നൽകുക.</p>
           <form><input name="utr" inputmode="numeric" maxlength="12" placeholder="ഉദാ: 412345678901"><button class="btn btn-ghost btn-sm" type="submit">പരിശോധിക്കുക</button></form>
           <p class="utr-msg" hidden></p>
+          ${config.whatsapp ? `<p class="fine" style="margin-top:8px">സഹായം വേണോ? <a href="https://wa.me/${esc(config.whatsapp)}?text=${encodeURIComponent(`നമസ്കാരം, ഓർഡർ ${o.id} – ₹${o.amount} അടച്ചു.`)}" target="_blank" rel="noopener">WhatsApp-ൽ ബന്ധപ്പെടുക</a></p>` : ''}
         </details>
       </div>`;
     $('.x', payBody).onclick = () => dialog.close();

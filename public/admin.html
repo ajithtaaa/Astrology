@@ -1,35 +1,283 @@
 <!doctype html>
-<html lang="ml">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex">
-  <title>അഡ്മിൻ – അൺലോക്ക് കോഡ്</title>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600&display=swap" rel="stylesheet">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Admin – ജീവിതപങ്കാളി</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;500;600;700&family=Noto+Serif+Malayalam:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
+  <style>
+    body { background: #f4efe6; }
+    .admin { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    .topbar h1 { font-size: 22px; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .tabs button { background: none; border: 0; padding: 10px 14px; font: 600 14.5px var(--sans); color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tabs button[aria-selected="true"] { color: var(--maroon); border-color: var(--maroon); }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .stat { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+    .stat small { color: var(--muted); font-size: 13px; }
+    .stat b { display: block; font: 700 26px/1.3 var(--serif); color: var(--deep); }
+    .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 18px; }
+    .card h2 { font-size: 17px; margin-bottom: 12px; }
+    .card h3 { font-size: 15px; margin: 16px 0 6px; }
+    .tbl-wrap { overflow-x: auto; }
+    table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 720px; }
+    .tbl th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; padding: 8px; border-bottom: 1px solid var(--line); }
+    .tbl td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .tbl code { font-size: 12.5px; }
+    .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+    .pill.paid { background: var(--ok-l); color: var(--ok); }
+    .pill.pending { background: var(--gold-l); color: #7a5713; }
+    .pill.expired { background: #eee; color: #777; }
+    .pill.unmatched { background: var(--bad-l); color: var(--bad); }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+    .card { min-width: 0; }
+    .guide code, .muted code { word-break: break-all; }
+    .form-row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: end; }
+    .copyline { display: flex; gap: 8px; align-items: center; margin: 6px 0 4px; }
+    .copyline input { font-family: ui-monospace, monospace; font-size: 13px; }
+    pre { background: #2a1d1a; color: #f6eadc; padding: 12px; border-radius: 10px; overflow: auto; font-size: 12.5px; line-height: 1.5; }
+    .muted { color: var(--muted); font-size: 13.5px; }
+    .note { background: var(--gold-l); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 8px 0; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--deep); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 50; }
+    .login { max-width: 380px; margin: 12vh auto; }
+    ol.guide { padding-left: 20px; margin: 6px 0; }
+    ol.guide li { margin-bottom: 4px; }
+    @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
 </head>
 <body>
-  <div class="app" style="padding:16px">
-    <div class="msg bot" style="max-width:480px;margin:40px auto">
-      <h3>പേയ്മെന്റ് സ്ഥിരീകരണം (ഉടമയ്ക്ക് മാത്രം)</h3>
-      <p>നിങ്ങളുടെ UPI ആപ്പിൽ പേയ്മെന്റ് (UTR, തുക) പരിശോധിച്ച ശേഷം ഓർഡർ നമ്പർ നൽകി അൺലോക്ക് കോഡ് ഉണ്ടാക്കുക. ആ കോഡ് ഉപയോക്താവിന് WhatsApp വഴി അയയ്ക്കുക.</p>
-      <form class="card" id="f">
-        <label>അഡ്മിൻ കീ<input type="password" name="key" required></label>
-        <label>ഓർഡർ നമ്പർ<input name="orderId" required placeholder="JP..."></label>
-        <button class="primary" type="submit">കോഡ് ഉണ്ടാക്കുക</button>
-        <p id="out"></p>
+  <div class="admin">
+    <section class="card login" id="login">
+      <h2>Admin login</h2>
+      <form id="login-form" class="form" style="padding:0">
+        <label class="field"><span>Admin key</span><input type="password" name="key" required autocomplete="current-password"></label>
+        <p class="form-error" hidden></p>
+        <button class="btn btn-primary" type="submit">Log in</button>
       </form>
+    </section>
+
+    <div id="app" hidden>
+      <div class="topbar">
+        <h1>ജീവിതപങ്കാളി · Admin</h1>
+        <div class="actions"><button class="btn btn-ghost btn-sm" id="refresh">Refresh</button><button class="btn btn-ghost btn-sm" id="logout">Log out</button></div>
+      </div>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="orders" aria-selected="true">Orders</button>
+        <button role="tab" data-tab="payments">Payments received</button>
+        <button role="tab" data-tab="webhooks">Webhook setup</button>
+        <button role="tab" data-tab="settings">Settings</button>
+      </div>
+
+      <section data-panel="orders">
+        <div class="stats" id="stats"></div>
+        <p class="note" id="storage-note" hidden>Storage is not persistent (no BLOB_READ_WRITE_TOKEN). Orders will be lost on restart.</p>
+        <div class="card">
+          <h2>Recent orders</h2>
+          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Created</th><th>Plan</th><th>Amount</th><th>Status</th><th>UTR / via</th><th></th></tr></thead><tbody id="orders"></tbody></table></div>
+        </div>
+      </section>
+
+      <section data-panel="payments" hidden>
+        <div class="grid2">
+          <div class="card">
+            <h2>Add a payment manually</h2>
+            <p class="muted">Saw a payment in BharatPe that didn't unlock automatically? Enter the exact amount (with paise). It's matched to the open order with that amount.</p>
+            <form id="credit-form" class="form-row">
+              <label class="field"><span>Amount (₹)</span><input name="amount" inputmode="decimal" required placeholder="49.37"></label>
+              <label class="field"><span>UTR (optional)</span><input name="utr" inputmode="numeric" maxlength="12"></label>
+              <label class="field"><span>Note</span><input name="note" maxlength="100"></label>
+              <button class="btn btn-primary" type="submit">Add</button>
+            </form>
+          </div>
+          <div class="card">
+            <h2>Test a message</h2>
+            <p class="muted">Paste a real BharatPe / bank SMS, notification or e-mail to check that the amount and UTR are read correctly. Nothing is saved.</p>
+            <form id="parse-form" class="form" style="padding:0">
+              <textarea name="text" rows="3" placeholder="Rs.49.37 received from xyz@okaxis. UTR 412345678901 - BharatPe"></textarea>
+              <button class="btn btn-ghost btn-sm" type="submit" style="justify-self:start">Check</button>
+              <p class="muted" id="parse-out"></p>
+            </form>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Payments received</h2>
+          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Received</th><th>Amount</th><th>UTR</th><th>Source</th><th>Order</th><th>Message</th></tr></thead><tbody id="credits"></tbody></table></div>
+        </div>
+      </section>
+
+      <section data-panel="webhooks" hidden>
+        <div class="card">
+          <h2>How payments are confirmed</h2>
+          <p class="muted">Every order gets a unique amount (e.g. ₹49.37). When any of the methods below reports a credit of that exact amount, the customer's question unlocks automatically. Use one or more methods. They can safely run together, because duplicate reports are ignored.</p>
+          <div id="hook-urls"></div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <h2>1 · BharatPe app notification (Android)</h2>
+            <ol class="guide">
+              <li>Install <b>MacroDroid</b> (or Tasker / "Notification Forwarder") on the phone with the BharatPe app.</li>
+              <li>Trigger: <i>Notification received</i> → app <b>BharatPe</b> (also add PhonePe Business / Paytm for Business if you use them).</li>
+              <li>Action: <i>HTTP Request</i> → POST to the <b>notification</b> URL, content type JSON, body:<pre>{"app":"bharatpe","title":"[notification_title]","text":"[notification]"}</pre></li>
+              <li>Allow MacroDroid notification access and turn off battery optimisation for it.</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h2>2 · Bank / BharatPe SMS (Android)</h2>
+            <ol class="guide">
+              <li>Install the open-source <b>SMS Forwarder</b> (F-Droid / GitHub <code>bogkonstantin/android_income_sms_gateway_webhook</code>), or use MacroDroid with an <i>SMS received</i> trigger.</li>
+              <li>Sender filter: <code>BHRTPE</code>, <code>BharatPe</code> or your bank (e.g. <code>HDFC</code>, <code>UNITY</code>).</li>
+              <li>POST to the <b>sms</b> URL with body <code>{"from":"%from%","text":"%text%"}</code>.</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h2>3 · E-mail alerts (Gmail, no phone needed)</h2>
+            <p class="muted">If BharatPe or your bank e-mails you for each payment, open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a>, create a project, paste this script and add a time-driven trigger <b>every 1 minute</b> on <code>forwardPayments</code>.</p>
+            <pre id="gas"></pre>
+            <p class="muted">Mailgun / CloudMailin / Zapier / Make / Pabbly inbound e-mail can also POST to the <b>email</b> URL directly.</p>
+          </div>
+          <div class="card">
+            <h2>4 · iPhone (Shortcuts)</h2>
+            <ol class="guide">
+              <li>Shortcuts → Automation → <b>Message</b> → Message contains <code>received</code> (or <code>credited</code>) → Run immediately.</li>
+              <li>Action <b>Get Contents of URL</b>: method POST, the <b>sms</b> URL, Request Body JSON, field <code>text</code> = Shortcut Input.</li>
+            </ol>
+            <h2 style="margin-top:16px">5 · Razorpay (optional gateway)</h2>
+            <p class="muted">If you later use Razorpay, add the <b>razorpay</b> URL as a webhook for <code>payment.captured</code> and set its secret as <code>RAZORPAY_WEBHOOK_SECRET</code> in Vercel. Signatures are verified.</p>
+            <h2 style="margin-top:16px">6 · Any other system</h2>
+            <p class="muted">POST JSON <code>{"amount": 49.37, "utr": "412345678901"}</code> to the <b>api</b> URL.</p>
+          </div>
+        </div>
+      </section>
+
+      <section data-panel="settings" hidden>
+        <div class="card" style="max-width:640px">
+          <h2>Payment settings</h2>
+          <form id="settings-form" class="form" style="padding:0">
+            <label class="field"><span>UPI ID (payments go here)</span><input name="upiId" required></label>
+            <label class="field"><span>Payee name shown in UPI apps</span><input name="payee" required maxlength="60"></label>
+            <div class="row2">
+              <label class="field"><span>Price – one question (₹)</span><input name="priceSingle" type="number" min="1" required></label>
+              <label class="field"><span>Valid for (days)</span><input name="daysSingle" type="number" min="1" max="365" required></label>
+            </div>
+            <div class="row2">
+              <label class="field"><span>Price – full package (₹)</span><input name="priceFull" type="number" min="1" required></label>
+              <label class="field"><span>Valid for (days)</span><input name="daysFull" type="number" min="1" max="365" required></label>
+            </div>
+            <label class="field"><span>WhatsApp number for customer support (with country code, e.g. 919876543210)</span><input name="whatsapp" inputmode="numeric"></label>
+            <button class="btn btn-primary" type="submit" style="justify-self:start">Save settings</button>
+          </form>
+        </div>
+      </section>
     </div>
   </div>
+
   <script>
-    document.getElementById('f').addEventListener('submit', async (e) => {
+  (() => {
+    const $ = (s, r = document) => r.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmt = (t) => t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    let key = sessionStorage.getItem('jp_admin') || '';
+    let data = null;
+
+    const toast = (msg) => { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); };
+    async function call(action, extra = {}) {
+      const r = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, action, ...extra }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401) { logout(); throw new Error('unauthorized'); }
+      if (!r.ok) throw new Error(j.error || 'failed');
+      return j;
+    }
+    function logout() { key = ''; sessionStorage.removeItem('jp_admin'); $('#app').hidden = true; $('#login').hidden = false; }
+
+    $('#login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      key = e.target.key.value;
+      try { await load(); sessionStorage.setItem('jp_admin', key); }
+      catch { const er = $('.form-error', e.target); er.textContent = 'Wrong admin key.'; er.hidden = false; }
+    });
+    $('#logout').onclick = logout;
+    $('#refresh').onclick = () => load().then(() => toast('Updated'));
+    document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', x === b));
+      document.querySelectorAll('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== b.dataset.tab; });
+    }));
+
+    async function load() {
+      data = await call('dashboard');
+      $('#login').hidden = true; $('#app').hidden = false;
+      const s = data.stats;
+      $('#stats').innerHTML = [['Revenue today', '₹' + s.revenueToday], ['Total revenue', '₹' + s.revenueTotal], ['Paid orders', s.paidCount], ['Waiting for payment', s.pendingCount], ['Unmatched payments', s.unmatchedCredits]]
+        .map(([l, v]) => `<div class="stat"><small>${l}</small><b>${esc(v)}</b></div>`).join('');
+      $('#storage-note').hidden = data.persistent;
+      $('#orders').innerHTML = data.orders.map((o) => {
+        const st = o.status === 'paid' ? 'paid' : o.expired ? 'expired' : 'pending';
+        return `<tr><td><code>${esc(o.id)}</code></td><td>${fmt(o.created)}</td><td>${o.plan === 'full' ? 'Full package' : 'Single: ' + esc(o.topic)}</td><td>₹${esc(o.amount)}</td>
+          <td><span class="pill ${st}">${st}</span>${o.paidAt ? '<br><small class="muted">' + fmt(o.paidAt) + '</small>' : ''}</td><td>${esc(o.utr || '')}<br><small class="muted">${esc(o.via || '')}</small></td>
+          <td><div class="actions">${o.status !== 'paid' ? `<button class="btn btn-ghost btn-sm" data-pay="${esc(o.id)}">Mark paid</button>` : ''}<button class="btn btn-ghost btn-sm" data-code="${esc(o.id)}">Unlock code</button></div></td></tr>`;
+      }).join('') || '<tr><td colspan="7" class="muted">No orders yet.</td></tr>';
+      $('#credits').innerHTML = data.credits.map((c) => `<tr><td>${fmt(c.at)}</td><td>₹${esc(c.amount)}</td><td>${esc(c.utr || '–')}</td><td>${esc(c.source)}</td>
+        <td>${c.orderId ? `<code>${esc(c.orderId)}</code>` : '<span class="pill unmatched">unmatched</span>'}</td><td><small class="muted">${esc(c.raw)}</small></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No payments recorded yet.</td></tr>';
+      const w = data.webhooks;
+      const line = (label, url) => url ? `<h3>${label}</h3><div class="copyline"><input readonly value="${esc(url)}"><button class="btn btn-ghost btn-sm" data-copy="${esc(url)}">Copy</button><button class="btn btn-ghost btn-sm" data-test="${esc(url)}">Test</button></div>` : '';
+      $('#hook-urls').innerHTML = (w.sms ? '' : '<p class="note">WEBHOOK_SECRET is not set in Vercel, so the webhook URLs are disabled.</p>')
+        + line('notification – BharatPe / PhonePe / Paytm app alerts', w.notification) + line('sms – bank or BharatPe SMS, iPhone Shortcuts', w.sms)
+        + line('email – Gmail script, Mailgun, Zapier…', w.email) + line('api – any system posting {amount, utr}', w.api)
+        + `<h3>razorpay ${w.razorpayConfigured ? '(secret configured)' : '(set RAZORPAY_WEBHOOK_SECRET to enable)'}</h3><div class="copyline"><input readonly value="${esc(w.razorpay)}"><button class="btn btn-ghost btn-sm" data-copy="${esc(w.razorpay)}">Copy</button></div>`;
+      $('#gas').textContent = `function forwardPayments() {
+  var URL = '${w.email || '<email webhook URL>'}';
+  var q = 'is:unread newer_than:1d (from:bharatpe OR from:alerts OR subject:(received OR credited))';
+  GmailApp.search(q).forEach(function (thread) {
+    thread.getMessages().forEach(function (m) {
+      if (!m.isUnread()) return;
+      UrlFetchApp.fetch(URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        payload: JSON.stringify({ from: m.getFrom(), subject: m.getSubject(), text: m.getPlainBody() }) });
+      m.markRead();
+    });
+  });
+}`;
+      const f = $('#settings-form');
+      for (const k of ['upiId', 'payee', 'priceSingle', 'priceFull', 'daysSingle', 'daysFull', 'whatsapp']) f[k].value = data.settings[k] ?? '';
+    }
+
+    document.addEventListener('click', async (e) => {
+      const t = e.target;
+      if (t.dataset.copy) { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied'); }
+      if (t.dataset.pay) {
+        const utr = prompt(`Mark ${t.dataset.pay} as paid.\nUTR (optional):`, '');
+        if (utr === null) return;
+        await call('mark_paid', { orderId: t.dataset.pay, utr }); toast('Marked as paid – customer unlocks automatically'); load();
+      }
+      if (t.dataset.code) { const r = await call('code', { orderId: t.dataset.code }); prompt('Unlock code for ' + r.orderId + ' (send to customer):', r.code); }
+      if (t.dataset.test) {
+        const r = await fetch(t.dataset.test, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Test: Rs.1.00 received via UPI. UTR ' + String(Date.now()).slice(-12) }) });
+        const j = await r.json(); toast(r.ok ? `Webhook OK – read ₹${j.amount}${j.matched ? ', matched ' + j.orderId : ' (no matching order, as expected)'}` : 'Webhook failed: ' + (j.error || r.status)); load();
+      }
+    });
+    $('#credit-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
-      const r = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: f.key.value, orderId: f.orderId.value.trim().toUpperCase() }) });
-      const j = await r.json();
-      document.getElementById('out').innerHTML = r.ok ? `അൺലോക്ക് കോഡ്: <b class="ok" style="font-size:1.4rem">${j.code}</b>` : '<span class="err">അനുമതിയില്ല അല്ലെങ്കിൽ ഓർഡർ നമ്പർ തെറ്റാണ്.</span>';
+      try { const r = await call('add_credit', { amount: f.amount.value, utr: f.utr.value, note: f.note.value }); toast(r.duplicate ? 'Already recorded' : r.orderId ? 'Matched order ' + r.orderId : 'Recorded (no open order with that amount)'); f.reset(); load(); }
+      catch (err) { toast(err.message); }
     });
+    $('#parse-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const r = await call('parse', { text: e.target.text.value });
+      $('#parse-out').textContent = r.parsed ? `✓ Read amount ₹${(r.parsed.paise / 100).toFixed(2)}${r.parsed.utr ? ', UTR ' + r.parsed.utr : ' (no UTR – will match by amount only)'}` : '✕ Not recognised as an incoming payment.';
+    });
+    $('#settings-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const settings = Object.fromEntries(['upiId', 'payee', 'priceSingle', 'priceFull', 'daysSingle', 'daysFull', 'whatsapp'].map((k) => [k, f[k].value]));
+      try { await call('settings', { settings }); toast('Saved – the website uses the new settings within a minute'); load(); } catch (err) { toast(err.message); }
+    });
+
+    if (key) load().catch(logout);
+    setInterval(() => { if (key && !document.hidden && $('[data-panel=orders]').hidden === false) load().catch(() => {}); }, 30000);
+  })();
   </script>
 </body>
 </html>

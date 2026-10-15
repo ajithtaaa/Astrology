@@ -12,7 +12,7 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   const self = { name: 'അജിത്', gender: 'male', dob: '1996-05-14', tob: '08:30', lat: 10.8505, lon: 76.2711, tz: 'Asia/Kolkata' };
   const partner = { name: 'മീര', dob: '1998-11-02', tob: '17:45', lat: 9.9312, lon: 76.2673, tz: 'Asia/Kolkata' };
   const cfg = await fetch(base + '/api/topics').then((r) => r.json());
-  assert(cfg.upiId === 'ajithta855@okhdfcbank' && cfg.webhook, 'config: HDFC UPI + webhook mode');
+  assert(cfg.upiId === 'BHARATPE2R0F0X6K4D61686@unitype' && cfg.webhook, 'config: BharatPe UPI + webhook mode');
   const chart = await post('/api/chart', self);
   assert(chart.signs && chart.signs.length === 12 && chart.lagna, 'chart endpoint');
   for (const [id, t] of Object.entries(cfg.topics)) {
@@ -22,7 +22,7 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
 
   // 1) Webhook auto-match by unique amount
   const o = await post('/api/order', { plan: 'full' });
-  assert(o.status === 200 && /^199\.\d\d$/.test(o.amount) && o.amount !== '199.00' && o.upi.includes('pa=ajithta855%40okhdfcbank'), `order has unique amount ₹${o.amount}`);
+  assert(o.status === 200 && /^199\.\d\d$/.test(o.amount) && o.amount !== '199.00' && o.upi.includes('pa=BHARATPE2R0F0X6K4D61686%40unitype'), `order has unique amount ₹${o.amount}`);
   assert((await post('/api/verify', { order: o.order })).status === 202, 'pending before payment');
   assert((await post('/api/webhook', { text: 'hi' })).status === 401, 'webhook requires key');
   const sms = `Money Received - INR ${o.amount} credited to HDFC Bank A/c XX1234 on 15-10-26 from VPA someone@okaxis (UPI Ref No 412345678901)`;
@@ -46,8 +46,56 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   assert((await post('/api/verify', { order: s2.order, utr: '512345678902' })).status === 409, 'UTR cannot be reused');
   assert((await post('/api/reading', { topic: 'spouse_place', self, token: sv.token })).status === 402, 'single token limited to its topic');
 
-  // 3) Owner unlock code
-  const code = await post('/api/admin', { key: 'test-admin', orderId: s2.id });
+  // 2b) BharatPe app notification without UTR, matched by unique amount
+  const n = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
+  const note = { app: 'com.bharatpe.app', title: 'Payment Received', text: `₹${n.amount} received from Rahul via UPI` };
+  const nw = await post('/api/webhook?key=hooksecret&source=notification', note);
+  assert(nw.matched && nw.orderId === n.id, 'BharatPe notification (no UTR) matched by amount');
+  assert((await post('/api/webhook?key=hooksecret&source=notification', note)).duplicate, 'same notification twice is ignored');
+  assert((await post('/api/verify', { order: n.order })).token, 'notification-paid order unlocks');
+
+  // 2c) E-mail alert, form-encoded
+  const em = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
+  const form = new URLSearchParams({ subject: 'You have received a payment', 'body-plain': `Dear merchant, Rs. ${em.amount} has been credited. RRN: 612345678903` }).toString();
+  const ew = await fetch(base + '/api/webhook?key=hooksecret&source=email', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }).then((r) => r.json());
+  assert(ew.matched && ew.utr === '612345678903', 'e-mail (form data) matched with RRN');
+
+  // 2d) Structured API credit
+  const ap = await post('/api/order', { plan: 'full' });
+  assert((await post('/api/webhook?key=hooksecret&source=api', { amount: Number(ap.amount), utr: '712345678904' })).matched, 'structured {amount, utr} credit matched');
+
+  // 2e) Debit messages are ignored
+  assert((await post('/api/webhook?key=hooksecret', { text: 'Rs.49.00 debited from a/c XX12 to VPA abc@ybl UPI Ref 812345678905' })).ignored, 'debit SMS ignored');
+
+  // 2f) Razorpay (signed)
+  process.env.RAZORPAY_WEBHOOK_SECRET = 'rzpsecret';
+  const rz = await post('/api/order', { plan: 'single', topic: 'chovva_dosham' });
+  const rzBody = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_1', amount: Math.round(Number(rz.amount) * 100), method: 'upi', vpa: 'a@b', acquirer_data: { rrn: '912345678906' } } } } });
+  const sig = require('crypto').createHmac('sha256', 'rzpsecret').update(rzBody).digest('hex');
+  const bad = await fetch(base + '/api/webhook?source=razorpay', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': 'nope' }, body: rzBody });
+  assert(bad.status === 401, 'razorpay bad signature rejected');
+  const good = await fetch(base + '/api/webhook?source=razorpay', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': sig }, body: rzBody }).then((r) => r.json());
+  assert(good.matched && good.orderId === rz.id, 'razorpay payment.captured matched');
+
+  // 3) Admin panel API
+  const dash = await post('/api/admin', { key: 'test-admin', action: 'dashboard' });
+  assert(dash.status === 200 && dash.orders.length >= 5 && dash.credits.length >= 5 && dash.webhooks.notification.includes('source=notification'), `admin dashboard (${dash.orders.length} orders, ₹${dash.stats.revenueTotal})`);
+  const mp = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
+  await post('/api/admin', { key: 'test-admin', action: 'mark_paid', orderId: mp.id });
+  assert((await post('/api/verify', { order: mp.order })).token, 'admin "mark paid" unlocks the customer');
+  const mc = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
+  assert((await post('/api/admin', { key: 'test-admin', action: 'add_credit', amount: mc.amount })).orderId === mc.id, 'manual credit matched');
+  const pr = await post('/api/admin', { key: 'test-admin', action: 'parse', text: 'Rs.49.37 received from xyz@okaxis. UTR 412345678901 - BharatPe' });
+  assert(pr.parsed && pr.parsed.paise === 4937 && pr.parsed.utr === '412345678901', 'parse tester');
+  const st = await post('/api/admin', { key: 'test-admin', action: 'settings', settings: { priceSingle: 59, upiId: 'new@ybl' } });
+  assert(st.settings.priceSingle === 59 && st.settings.upiId === 'new@ybl', 'settings saved');
+  const cfg2 = await fetch(base + '/api/topics').then((r) => r.json());
+  assert(cfg2.plans.single.amount === 59 && cfg2.upiId === 'new@ybl', 'site uses new settings');
+  const o59 = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
+  assert(o59.amount.startsWith('59.') && o59.upi.includes('pa=new%40ybl'), 'new orders use new price + UPI');
+
+  // 4) Owner unlock code
+  const code = await post('/api/admin', { key: 'test-admin', action: 'code', orderId: s2.id });
   assert(code.status === 200 && (await post('/api/verify', { order: s2.order, code: code.code })).token, 'admin unlock code works');
   assert((await post('/api/admin', { key: 'nope', orderId: s2.id })).status === 401, 'admin requires key');
   console.log('all passed');

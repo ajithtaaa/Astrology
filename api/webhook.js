@@ -2,50 +2,89 @@ const crypto = require('crypto');
 const pay = require('../lib/pay');
 const { send } = require('./_util');
 
-// Payment webhook. Point an SMS-forwarding app (or any payment notifier) at
-//   POST /api/webhook?key=WEBHOOK_SECRET
-// Body may be the bank SMS (JSON {text|message|body|sms}, form data, or plain text),
-// or a structured credit {utr, amount}.
-async function rawBody(req) {
+// Payment webhook. Accepts several sources so a payment can be confirmed however it is reported:
+//   POST /api/webhook?key=WEBHOOK_SECRET[&source=sms|notification|email|shortcut]
+//     - bank / BharatPe SMS forwarded by an Android app  ({"from","text"} JSON, form data or plain text)
+//     - app push notifications (BharatPe, PhonePe Business, Paytm, GPay) via Notification Forwarder / MacroDroid / Tasker
+//     - e-mail alerts via Gmail Apps Script, Mailgun, CloudMailin, Zapier, Make, Pabbly ({subject, body-plain|plain|html})
+//     - structured credits from anything else: {"amount": 49.37, "utr": "412345678901"}
+//   POST /api/webhook?source=razorpay   (Razorpay payment.captured, verified with RAZORPAY_WEBHOOK_SECRET)
+
+async function readRaw(req) {
+  const chunks = [];
+  try { for await (const c of req) chunks.push(c); } catch { /* stream already consumed */ }
+  const raw = Buffer.concat(chunks).toString();
+  if (raw) return raw;
   if (typeof req.body === 'string') return req.body;
   if (req.body && typeof req.body === 'object') return JSON.stringify(req.body);
-  const chunks = [];
-  for await (const c of req) chunks.push(c);
-  return Buffer.concat(chunks).toString();
+  return '';
 }
 
-function extract(raw) {
-  let data = null;
-  try { data = JSON.parse(raw); } catch {
-    if (raw.includes('=') && !raw.includes(' ')) data = Object.fromEntries(new URLSearchParams(raw));
+function parseBody(raw, contentType) {
+  try { return JSON.parse(raw); } catch { /* not JSON */ }
+  if (/x-www-form-urlencoded/.test(contentType || '') || (/^[\w%.+-]+=/.test(raw) && !raw.includes(' '))) {
+    return Object.fromEntries(new URLSearchParams(raw));
   }
-  if (data && (data.utr || data.rrn) && data.amount) {
-    return { utr: String(data.utr || data.rrn).replace(/\D/g, ''), paise: Math.round(Number(data.amount) * 100), from: data.from || '' };
-  }
-  const text = data ? (data.text || data.message || data.body || data.sms || data.content || data.msg || JSON.stringify(data)) : raw;
-  const parsed = pay.parseCreditSms(text);
-  return parsed && { ...parsed, from: (data && (data.from || data.sender)) || '', text };
+  return null;
+}
+
+function textOf(d) {
+  const fields = ['title', 'subject', 'text', 'bigtext', 'big_text', 'message', 'msg', 'body', 'sms', 'content',
+    'body-plain', 'stripped-text', 'plain', 'html', 'notification', 'description'];
+  const parts = fields.map((f) => d[f]).filter((v) => typeof v === 'string' && v.trim());
+  return parts.length ? parts.join(' \n ') : JSON.stringify(d);
+}
+
+function razorpay(raw, req) {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  const sig = req.headers['x-razorpay-signature'] || '';
+  if (!secret) return { status: 501, error: 'RAZORPAY_WEBHOOK_SECRET not set' };
+  const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+  if (!pay.safeEq(sig, expected)) return { status: 401, error: 'bad signature' };
+  const d = JSON.parse(raw);
+  const p = d.payload && d.payload.payment && d.payload.payment.entity;
+  if (!p || !['payment.captured', 'order.paid'].includes(d.event)) return { ignored: true };
+  const rrn = (p.acquirer_data && (p.acquirer_data.rrn || p.acquirer_data.upi_transaction_id)) || '';
+  return { credit: { paise: Number(p.amount), utr: /^\d{12}$/.test(rrn) ? rrn : '', raw: `razorpay ${p.id} ${p.vpa || p.method}`, source: 'razorpay' } };
 }
 
 module.exports = async (req, res) => {
-  const secret = process.env.WEBHOOK_SECRET;
   const url = new URL(req.url, 'http://x');
-  const key = req.headers['x-webhook-secret'] || url.searchParams.get('key') || '';
-  if (!secret || key.length !== secret.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(secret))) {
-    return send(res, 401, { error: 'unauthorized' });
+  const source = (url.searchParams.get('source') || '').toLowerCase().slice(0, 20);
+  const raw = await readRaw(req);
+
+  let credit = null;
+  if (source === 'razorpay') {
+    const r = razorpay(raw, req);
+    if (r.status) return send(res, r.status, { error: r.error });
+    if (r.ignored) return send(res, 200, { ok: true, ignored: true });
+    credit = r.credit;
+  } else {
+    const secret = process.env.WEBHOOK_SECRET;
+    const key = String(req.headers['x-webhook-secret'] || url.searchParams.get('key') || '');
+    if (!secret || !pay.safeEq(key, secret)) return send(res, 401, { error: 'unauthorized' });
+    if (req.method !== 'POST') return send(res, 200, { ok: true, hint: 'Webhook is reachable. POST payment notifications here.' });
+
+    const data = parseBody(raw, req.headers['content-type']);
+    const filter = process.env.SMS_SENDER_FILTER;
+    const from = data && (data.from || data.sender || data.app || data.package || data.packageName || '');
+    if (filter && from && !new RegExp(filter, 'i').test(from)) return send(res, 200, { ok: true, ignored: true, reason: 'sender' });
+
+    if (data && (data.amount != null) && (data.utr || data.rrn || data.reference || data.txnId)) {
+      const utr = String(data.utr || data.rrn || data.reference || data.txnId).replace(/\D/g, '');
+      credit = { paise: Math.round(Number(data.amount) * 100), utr: utr.length === 12 ? utr : '', raw: JSON.stringify(data).slice(0, 300), source: source || 'api' };
+    } else {
+      const text = data ? textOf(data) : raw;
+      const parsed = pay.parseCredit(text);
+      if (parsed) credit = { ...parsed, raw: parsed.text, source: source || (data && (data.app || data.package) ? 'notification' : 'sms') };
+    }
   }
-  if (req.method !== 'POST') return send(res, 200, { ok: true, hint: 'POST bank credit SMS here' });
-  const raw = await rawBody(req);
-  const credit = extract(raw);
-  if (!credit || credit.utr.length !== 12 || !credit.paise) {
-    console.log('[webhook] ignored message:', raw.slice(0, 200));
+
+  if (!credit || !credit.paise) {
+    console.log(`[webhook:${source || 'default'}] not a credit:`, raw.slice(0, 200));
     return send(res, 200, { ok: true, matched: false, ignored: true });
   }
-  const filter = process.env.SMS_SENDER_FILTER;
-  if (filter && credit.from && !new RegExp(filter, 'i').test(credit.from)) {
-    return send(res, 200, { ok: true, ignored: true, reason: 'sender' });
-  }
-  const r = await pay.recordCredit({ paise: credit.paise, utr: credit.utr, raw: credit.text || raw });
-  console.log(`[webhook] credit ₹${(credit.paise / 100).toFixed(2)} utr=${credit.utr} order=${r.orderId || '-'}${r.duplicate ? ' (duplicate)' : ''}`);
-  send(res, 200, { ok: true, matched: Boolean(r.orderId), orderId: r.orderId, duplicate: r.duplicate });
+  const r = await pay.recordCredit(credit);
+  console.log(`[webhook:${credit.source}] ₹${pay.rupees(credit.paise)} utr=${credit.utr || '-'} order=${r.orderId || '-'}${r.duplicate ? ' (duplicate)' : ''}`);
+  send(res, 200, { ok: true, amount: pay.rupees(credit.paise), utr: credit.utr || null, matched: Boolean(r.orderId), orderId: r.orderId, duplicate: r.duplicate });
 };
