@@ -8,10 +8,11 @@ module.exports = async (req, res) => {
   try {
     const { plan, topic } = await body(req);
     if (plan === 'single' && (!TOPICS[topic] || TOPICS[topic].free)) return send(res, 400, { error: 'invalid topic' });
-    const order = createOrder(plan, topic);
-    const qr = await QRCode.toString(order.upi, { type: 'svg', margin: 1, width: 220 });
+    const order = await createOrder(plan, topic);
+    const qr = await QRCode.toString(order.upi, { type: 'svg', margin: 1, width: 240, color: { dark: '#2b1b17', light: '#ffffff' } });
     send(res, 200, { ...order, qr });
   } catch (e) {
-    send(res, 400, { error: e.message });
+    console.error('[order]', e);
+    send(res, e.message === 'busy' ? 503 : 400, { error: e.message });
   }
 };

@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/ajithtaaa/Astrology#readme",
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
     "astronomy-engine": "^2.1.19",
     "qrcode": "^1.5.4"
   },

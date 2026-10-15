@@ -1,20 +1,34 @@
-const { readOrder, unlockCode, issueToken, AUTO_UNLOCK } = require('../lib/pay');
+const pay = require('../lib/pay');
 const { send, body } = require('./_util');
 
+// Polled by the payment dialog. Unlocks when the webhook has seen the credit,
+// when the customer's UTR matches a recorded credit, or with an owner-issued unlock code.
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
   try {
     const { order, utr, code } = await body(req);
-    const o = readOrder(order);
-    const cleanUtr = String(utr || '').replace(/\s/g, '');
+    const o = pay.readOrder(order);
+    const cleanUtr = String(utr || '').replace(/\D/g, '');
+
     if (code) {
-      if (String(code).trim().toUpperCase() !== unlockCode(o.id)) return send(res, 400, { error: 'bad_code' });
-      return send(res, 200, issueToken(o, cleanUtr));
+      if (String(code).trim().toUpperCase() !== pay.unlockCode(o.id)) return send(res, 400, { error: 'bad_code' });
+      await pay.markPaid(o.id, cleanUtr, 'admin');
+      return send(res, 200, pay.issueToken(o, cleanUtr));
     }
-    if (!/^\d{12}$/.test(cleanUtr)) return send(res, 400, { error: 'bad_utr' });
-    console.log(`[payment] order=${o.id} plan=${o.plan} topic=${o.topic} amount=${o.amount} utr=${cleanUtr}`);
-    if (AUTO_UNLOCK) return send(res, 200, issueToken(o, cleanUtr));
-    send(res, 202, { pending: true, orderId: o.id, whatsapp: process.env.OWNER_WHATSAPP || null });
+    if ((await pay.orderStatus(o)) === 'paid') return send(res, 200, pay.issueToken(o, cleanUtr));
+
+    if (cleanUtr) {
+      if (cleanUtr.length !== 12) return send(res, 400, { error: 'bad_utr' });
+      const m = await pay.claimByUtr(o, cleanUtr);
+      if (m.ok) return send(res, 200, pay.issueToken(o, cleanUtr));
+      if (m.found) return send(res, 409, { error: m.reason === 'used' ? 'utr_used' : 'amount_low' });
+      console.log(`[payment] waiting order=${o.id} amount=${(o.paise / 100).toFixed(2)} utr=${cleanUtr}`);
+      if (pay.AUTO_UNLOCK || !pay.webhookMode) {
+        await pay.markPaid(o.id, cleanUtr, 'trust');
+        return send(res, 200, pay.issueToken(o, cleanUtr));
+      }
+    }
+    send(res, 202, { pending: true, orderId: o.id, expired: o.exp < Date.now(), whatsapp: process.env.OWNER_WHATSAPP || null });
   } catch (e) {
     send(res, 400, { error: e.message });
   }

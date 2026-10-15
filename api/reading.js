@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
   try {
     const me = person(self);
     const other = topic === 'porutham' ? person({ ...partner, gender: me.gender === 'female' ? 'male' : 'female' }) : null;
-    let paragraphs = localReading(topic, me, other, question);
+    let sections = localReading(topic, me, other, question);
     let source = 'local';
 
     if (soma.enabled()) {
@@ -58,7 +58,8 @@ module.exports = async (req, res) => {
           answer = await soma.askSoma(q, me.birth);
         }
         if (answer) {
-          paragraphs = topic === 'porutham' ? [...paragraphs, answer] : [answer, ...(topic === 'custom' ? [] : paragraphs)];
+          const soma = { h: 'വിശദ വിശകലനം', p: answer.split(/\n{2,}/).map((t) => t.trim()).filter(Boolean) };
+          sections = topic === 'custom' ? [soma, ...sections] : [...sections, soma];
           source = 'soma';
         }
       } catch (e) {
@@ -70,7 +71,8 @@ module.exports = async (req, res) => {
       topic,
       title: meta.title,
       summary: chartSummary(me.chart),
-      paragraphs,
+      name: me.name || '',
+      sections,
       disclaimer: DISCLAIMER,
       source,
     });
