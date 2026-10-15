@@ -1,0 +1,27 @@
+{
+  "name": "jeevithapankali-jyothisham",
+  "version": "1.0.0",
+  "description": "Malayalam relationship astrology chatbot (Ask Soma + UPI)",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "test": "node test/smoke.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajithtaaa/Astrology.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ajithtaaa/Astrology/issues"
+  },
+  "homepage": "https://github.com/ajithtaaa/Astrology#readme",
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "qrcode": "^1.5.4"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

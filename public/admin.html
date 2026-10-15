@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>അഡ്മിൻ – അൺലോക്ക് കോഡ്</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app" style="padding:16px">
+    <div class="msg bot" style="max-width:480px;margin:40px auto">
+      <h3>പേയ്മെന്റ് സ്ഥിരീകരണം (ഉടമയ്ക്ക് മാത്രം)</h3>
+      <p>നിങ്ങളുടെ UPI ആപ്പിൽ പേയ്മെന്റ് (UTR, തുക) പരിശോധിച്ച ശേഷം ഓർഡർ നമ്പർ നൽകി അൺലോക്ക് കോഡ് ഉണ്ടാക്കുക. ആ കോഡ് ഉപയോക്താവിന് WhatsApp വഴി അയയ്ക്കുക.</p>
+      <form class="card" id="f">
+        <label>അഡ്മിൻ കീ<input type="password" name="key" required></label>
+        <label>ഓർഡർ നമ്പർ<input name="orderId" required placeholder="JP..."></label>
+        <button class="primary" type="submit">കോഡ് ഉണ്ടാക്കുക</button>
+        <p id="out"></p>
+      </form>
+    </div>
+  </div>
+  <script>
+    document.getElementById('f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const r = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: f.key.value, orderId: f.orderId.value.trim().toUpperCase() }) });
+      const j = await r.json();
+      document.getElementById('out').innerHTML = r.ok ? `അൺലോക്ക് കോഡ്: <b class="ok" style="font-size:1.4rem">${j.code}</b>` : '<span class="err">അനുമതിയില്ല അല്ലെങ്കിൽ ഓർഡർ നമ്പർ തെറ്റാണ്.</span>';
+    });
+  </script>
+</body>
+</html>
