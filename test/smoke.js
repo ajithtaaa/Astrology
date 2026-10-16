@@ -68,6 +68,16 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   await admin('approve', { id: pr.request.id });
   assert((await post('/api/reading', { topic: 'porutham', self, partner, session })).status === 200, 'porutham after approval');
 
+  // Old chats + birth details follow the phone number to any device
+  await post('/api/user', { session, action: 'profile', profile: self });
+  const relog = await post('/api/user', { action: 'login', name: 'അജിത്', phone: '+91 98765-43210' });
+  const meAgain = await post('/api/user', { session: relog.session });
+  assert(meAgain.profile && meAgain.profile.dob === self.dob && meAgain.profile.placeName === undefined || meAgain.profile.dob === self.dob, 'birth details restored for same phone');
+  const hist = await post('/api/user', { session: relog.session, action: 'history' });
+  assert(hist.history.length >= 4 && hist.history.some((h) => h.topic === 'custom' && h.question) && hist.history.every((h) => h.sections && h.title), `old answers available after re-login (${hist.history.length})`);
+  const otherHist = await post('/api/user', { session: other, action: 'history' });
+  assert(otherHist.history.length === 0, "other users don't see someone else's history");
+
   // Settings: per-question price + QR upload
   await admin('settings', { settings: { prices: { spouse_looks: 99 }, upiId: 'new@ybl' } });
   const cfg2 = await fetch(base + '/api/topics').then((r) => r.json());

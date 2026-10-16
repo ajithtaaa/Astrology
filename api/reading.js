@@ -71,6 +71,8 @@ module.exports = async (req, res) => {
       }
     }
 
+    const result = { topic, title: meta.title, summary: chartSummary(me.chart), sections, partnerName: other ? other.name || '' : undefined, question: topic === 'custom' ? question : undefined };
+    await accounts.saveHistory(phone, result).catch((e) => console.error('[history]', e.message));
     send(res, 200, {
       topic,
       title: meta.title,

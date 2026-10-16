@@ -26,11 +26,13 @@ configured or fails, the built-in engine answers on its own, so the site keeps w
   porutham, and the user's own question.
 
 **Sign-in.** Users sign in with their name and phone number. There's no OTP. The session is HMAC-signed with
-`PAYMENT_SECRET`.
+`PAYMENT_SECRET`. Birth details and every answer are saved against the phone number, so signing in again with
+the same number on any device brings back the chart and old answers. **My Account** shows unlocked questions,
+own questions, payment requests with their status, and past answers.
 
 **Payments (manual).**
 1. The user picks a paid question and sees its price (set per question in the admin panel) and the payment QR code.
-   They can download the QR or open it in a UPI app.
+   They can download the QR.
 2. They pay, then enter the name shown in their Google Pay / UPI app. Someone who has already paid enters only the
    name. For "own question", the question text is sent with the request.
 3. In `/admin.html` (log in with `ADMIN_KEY`), the owner checks BharatPe for that payer name and amount, then clicks

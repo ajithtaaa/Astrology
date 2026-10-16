@@ -28,6 +28,7 @@
   let poller = null;
   let account = load(K.account); // { session, name, phone }
   let status = { unlocked: [], requests: [] };
+  let accountData = { history: [] };
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } }
@@ -49,7 +50,12 @@
     if (!account) return;
     const r = await api('/api/user', { session: account.session }).catch(() => ({}));
     if (r.status === 401) return signOut();
-    if (r.user) status = { unlocked: r.unlocked || [], requests: r.requests || [] };
+    if (r.user) {
+      status = { unlocked: r.unlocked || [], requests: r.requests || [] };
+      accountData = { ...accountData, user: r.user };
+      // Same phone number on a new device: bring back the saved birth details.
+      if (r.profile && r.profile.dob && !profile) { profile = r.profile; save(K.profile, profile); }
+    }
   }
 
   // ------------------------------------------------------------ place picker (live search)
@@ -171,6 +177,7 @@
     const first = !profile;
     profile = { name: form.elements.name.value.trim(), gender: gender.value, dob: form.dob.value, tob: form.tob.value, ...place };
     save(K.profile, profile);
+    api('/api/user', { session: account.session, action: 'profile', profile }).catch(() => {});
     await showProfile();
     if (first) chat.innerHTML = '';
     say(`<p>${esc(profile.name)}, നിങ്ങളുടെ ജാതകം തയ്യാറായി. 🙏</p><p>ആദ്യം പങ്കാളിയുടെ സ്വഭാവവും വിവാഹയോഗവും സൗജന്യമായി നോക്കാം. കൂടുതൽ വിശദമായ ചോദ്യങ്ങൾ താഴെയുണ്ട്.</p>`);
@@ -260,6 +267,34 @@
   });
   composerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); composer.requestSubmit(); } });
 
+  function renderReport(r, quiet) {
+    const body = r.sections.map((s) => `<section class="report-sec"><h4>${esc(s.h)}</h4>${s.table ? `<table class="ptable">${s.table.map((row) => `<tr><td><span class="${row.ok ? 'ok-dot' : 'no-dot'}">${row.ok ? '✓' : '✕'}</span></td><td><b>${esc(row.name)}</b><small>${esc(row.note)}${row.detail ? ' · ' + esc(row.detail) : ''}</small></td></tr>`).join('')}</table>` : ''}${(s.p || []).map((p) => `<p>${esc(p)}</p>`).join('')}</section>`).join('');
+    const when = r.at ? `<time>${new Date(r.at).toLocaleString('ml-IN', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>` : '';
+    const m = bot(`<article class="report" ${r.id ? `id="h-${esc(r.id)}"` : ''}>
+      <header class="report-head"><h3>${esc(r.title)}</h3>${when}${r.question ? `<p style="margin:6px 0 0">“${esc(r.question)}”</p>` : ''}<div class="chips">${(r.summary || []).map((x) => `<span>${esc(x)}</span>`).join('')}</div></header>
+      <div class="report-body">${body}</div>
+      <footer class="report-foot"><span></span><button class="btn btn-ghost btn-sm share" type="button">പങ്കിടുക / പകർത്തുക</button></footer>
+    </article>`, quiet);
+    $('.share', m).addEventListener('click', async () => {
+      const text = `${r.title}\n\n` + r.sections.map((x) => `${x.h}\n${(x.table || []).map((t) => `${t.ok ? '✓' : '✕'} ${t.name}`).join('\n')}${x.table ? '\n' : ''}${(x.p || []).join('\n')}`).join('\n\n');
+      if (navigator.share) { navigator.share({ title: r.title, text }).catch(() => {}); return; }
+      await navigator.clipboard?.writeText(text);
+      $('.share', m).textContent = 'പകർത്തി ✓';
+    });
+    return m;
+  }
+
+  // Old answers for this phone number (from any device).
+  async function loadHistory() {
+    const r = await api('/api/user', { session: account.session, action: 'history' }).catch(() => ({}));
+    const items = r.history || [];
+    if (!items.length) return;
+    bot(`<div class="history-divider">മുമ്പത്തെ ഫലങ്ങൾ (${items.length})</div>`, true);
+    items.forEach((it) => renderReport(it, true));
+    bot('<div class="history-divider">ഇന്ന്</div>', true);
+    accountData.history = items;
+  }
+
   async function runReading(topic, requestId) {
     const wait = typing();
     const r = await api('/api/reading', { topic, self: profile, partner, session: account?.session, requestId }).catch(() => ({ status: 0 }));
@@ -267,18 +302,8 @@
     if (r.status === 402) return topic === 'custom' ? askCustom() : openPay(topic);
     if (r.status === 401) return signOut();
     if (r.status !== 200) { say('<p>ക്ഷമിക്കണം, ഫലം തയ്യാറാക്കുന്നതിൽ ഒരു തടസ്സം നേരിട്ടു. ഒന്നുകൂടി ശ്രമിക്കാമോ?</p>'); return showTopics(); }
-    const body = r.sections.map((s) => `<section class="report-sec"><h4>${esc(s.h)}</h4>${s.table ? `<table class="ptable">${s.table.map((row) => `<tr><td><span class="${row.ok ? 'ok-dot' : 'no-dot'}">${row.ok ? '✓' : '✕'}</span></td><td><b>${esc(row.name)}</b><small>${esc(row.note)}${row.detail ? ' · ' + esc(row.detail) : ''}</small></td></tr>`).join('')}</table>` : ''}${(s.p || []).map((p) => `<p>${esc(p)}</p>`).join('')}</section>`).join('');
-    const m = bot(`<article class="report">
-      <header class="report-head"><h3>${esc(r.title)}</h3><div class="chips">${r.summary.map((s) => `<span>${esc(s)}</span>`).join('')}</div></header>
-      <div class="report-body">${body}</div>
-      <footer class="report-foot"><span></span><button class="btn btn-ghost btn-sm share" type="button">പങ്കിടുക / പകർത്തുക</button></footer>
-    </article>`);
-    $('.share', m).addEventListener('click', async () => {
-      const text = `${r.title}\n\n` + r.sections.map((s) => `${s.h}\n${(s.table || []).map((t) => `${t.ok ? '✓' : '✕'} ${t.name}`).join('\n')}${s.table ? '\n' : ''}${(s.p || []).join('\n')}`).join('\n\n');
-      if (navigator.share) { navigator.share({ title: r.title, text }).catch(() => {}); return; }
-      await navigator.clipboard?.writeText(text);
-      $('.share', m).textContent = 'പകർത്തി ✓';
-    });
+    const m = renderReport(r);
+    accountData.history.push({ ...r, at: Date.now() });
     showTopics(undefined, true);
     requestAnimationFrame(() => m.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
@@ -287,12 +312,6 @@
   function openPay(topic, question) {
     const t = config.topics[topic];
     const qrSrc = `/api/topics?qr=1&v=${config.qrVersion}`;
-    // Prefer the exact link from the official QR (apps trust it); only add the amount if the admin enabled it.
-    let upiLink = '';
-    if (config.upiButton && (config.upiLink || config.upiId)) {
-      upiLink = config.upiLink || `upi://pay?pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payee || '')}&cu=INR`;
-      if (config.upiAmount) upiLink = upiLink.replace(/([?&])am=[^&]*&?/i, '$1').replace(/[?&]$/, '') + `&am=${t.price}`;
-    }
     payBody.innerHTML = `
       <div class="dlg-head"><div><h3 id="pay-title">${esc(t.title)}</h3><p>ഈ ചോദ്യത്തിനുള്ള തുക: <b>₹${t.price}</b></p></div><button class="x" type="button" aria-label="അടയ്ക്കുക">×</button></div>
       <div class="pay-steps">
@@ -300,11 +319,8 @@
           <h4><span>1</span>താഴെയുള്ള QR കോഡിലേക്ക് ₹${t.price} അടയ്ക്കുക</h4>
           <img class="qr-img" src="${qrSrc}" alt="പേയ്മെന്റ് QR കോഡ്">
           <div class="qr-actions">
-            <a class="btn btn-ghost btn-sm" href="${qrSrc}&download=1" download>QR ഡൗൺലോഡ് ചെയ്യുക</a>
-            ${isMobile && upiLink ? `<a class="btn btn-primary btn-sm" href="${esc(upiLink)}">UPI ആപ്പിൽ തുറക്കുക</a>` : ''}
+            <a class="btn btn-primary btn-sm" href="${qrSrc}&download=1" download>QR ഡൗൺലോഡ് ചെയ്യുക</a>
           </div>
-          ${isMobile && upiLink && !config.upiAmount ? `<p class="fine" style="text-align:center;margin-top:6px">ആപ്പ് തുറക്കുമ്പോൾ തുകയായി <b>₹${t.price}</b> നൽകുക.</p>` : ''}
-          ${config.upiId ? `<p class="fine" style="text-align:center;margin-top:8px">UPI ഐഡി: <b>${esc(config.upiId)}</b></p>` : ''}
         </div>
         <form class="pay-step" id="payer-form">
           <h4><span>2</span>പണമടച്ച പേര് നൽകുക</h4>
@@ -377,6 +393,41 @@
     location.reload();
   }
   $('#logout').addEventListener('click', signOut);
+
+  const accDialog = $('#account-dialog');
+  const ST = { approved: 'സ്ഥിരീകരിച്ചു', pending: 'പരിശോധനയിൽ', rejected: 'നിരസിച്ചു' };
+  const dt = (t) => (t ? new Date(t).toLocaleDateString('ml-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  async function openAccount() {
+    await refreshStatus();
+    if (!accountData.history.length) {
+      const h = await api('/api/user', { session: account.session, action: 'history' }).catch(() => ({}));
+      accountData.history = h.history || [];
+    }
+    const titleOf = (t) => config.topics[t]?.title || t;
+    const unlocked = Object.entries(config.topics).filter(([id, t]) => id !== 'custom' && (t.free || status.unlocked.includes(id)));
+    const reqs = [...status.requests].sort((a, b) => b.created - a.created);
+    const custom = reqs.filter((r) => r.topic === 'custom');
+    const hist = [...accountData.history].reverse();
+    $('#account-body').innerHTML = `
+      <div class="dlg-head"><div><h3 id="acc-title">My Account</h3><p>${esc(account.name)} · +${esc(account.phone)}${accountData.user?.created ? ' · അംഗമായത്: ' + dt(accountData.user.created) : ''}</p></div><button class="x" type="button" aria-label="Close">×</button></div>
+      <div class="acc-sec"><h4>തുറന്ന ചോദ്യങ്ങൾ</h4>
+        <ul class="acc-list">${unlocked.map(([id, t]) => `<li><span>${esc(t.title)}</span><span class="st approved">${t.free ? 'സൗജന്യം' : 'ലഭ്യമാണ്'}</span></li>`).join('')}</ul></div>
+      <div class="acc-sec"><h4>സ്വന്തം ചോദ്യങ്ങൾ</h4>
+        ${custom.length ? `<ul class="acc-list">${custom.map((r) => `<li><div><small>${dt(r.created)} · ₹${esc(r.amount)}</small><div class="q">${esc(r.question)}</div></div><span class="st ${r.status}">${ST[r.status]}</span></li>`).join('')}</ul>` : '<p class="acc-empty">ഇതുവരെ ചോദ്യങ്ങളൊന്നുമില്ല.</p>'}</div>
+      <div class="acc-sec"><h4>പേയ്മെന്റുകൾ</h4>
+        ${reqs.length ? `<ul class="acc-list">${reqs.map((r) => `<li><div>${esc(titleOf(r.topic))}<small>${dt(r.created)} · ₹${esc(r.amount)} · ${esc(r.payerName || '')}</small></div><span class="st ${r.status}">${ST[r.status]}</span></li>`).join('')}</ul>` : '<p class="acc-empty">ഇതുവരെ പേയ്മെന്റുകളൊന്നുമില്ല.</p>'}</div>
+      <div class="acc-sec"><h4>മുമ്പത്തെ ഫലങ്ങൾ</h4>
+        ${hist.length ? `<ul class="acc-list">${hist.map((h) => `<li><div>${esc(h.title)}<small>${new Date(h.at).toLocaleString('ml-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${h.question ? ' · “' + esc(h.question.slice(0, 60)) + '”' : ''}</small></div><button class="btn btn-ghost btn-sm" data-goto="${esc(h.id)}" type="button">കാണുക</button></li>`).join('')}</ul>` : '<p class="acc-empty">ഇതുവരെ ഫലങ്ങളൊന്നുമില്ല.</p>'}</div>`;
+    $('.x', accDialog).onclick = () => accDialog.close();
+    accDialog.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => {
+      accDialog.close();
+      let el = document.getElementById('h-' + b.dataset.goto);
+      if (!el) { const it = accountData.history.find((h) => h.id === b.dataset.goto); if (it) el = renderReport(it); }
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    if (!accDialog.open) accDialog.showModal();
+  }
+  $('#my-account').addEventListener('click', openAccount);
   signinForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = $('.form-error', signinForm);
@@ -390,6 +441,14 @@
     save(K.account, account);
     await refreshStatus();
     showSignedIn();
+    if (profile) {
+      await showProfile();
+      await loadHistory();
+      say(`<p>വീണ്ടും സ്വാഗതം, ${esc(name)}! 🙏 നിങ്ങളുടെ ജാതകവും മുമ്പത്തെ ഫലങ്ങളും തയ്യാറാണ്.</p>`);
+      showTopics('ഇന്ന് എന്താണ് അറിയേണ്ടത്?');
+      if (status.requests.some((q) => q.status === 'pending')) startPolling();
+      return;
+    }
     form.hidden = false;
     form.elements.name.value = form.elements.name.value || name;
     say(`<p>സ്വാഗതം, ${esc(name)}! 🙏 ഇനി നിങ്ങളുടെ ജനനവിവരങ്ങൾ നൽകുക.</p>`);
@@ -412,6 +471,7 @@
     if (!account) return;
     if (profile) {
       await showProfile();
+      await loadHistory();
       say(`<p>വീണ്ടും സ്വാഗതം, ${esc(account.name)}! 🙏 നിങ്ങളുടെ ജാതകം തയ്യാറാണ്.</p>`);
       showTopics('ഇന്ന് എന്താണ് അറിയേണ്ടത്?');
       await checkApprovals();
