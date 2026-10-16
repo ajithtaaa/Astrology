@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ജീവിതപങ്കാളി – വിവാഹ ജ്യോതിഷം</title>
+  <title>ജീവിതപങ്കാളി ജ്യോതിഷം</title>
   <meta name="description" content="നിങ്ങളുടെ ഭാവി ജീവിതപങ്കാളി ആരായിരിക്കും? സ്വഭാവം, ജോലി, നാട്, പ്രണയവിവാഹമോ നിശ്ചയിച്ച വിവാഹമോ, വിവാഹസമയം, ചൊവ്വാദോഷം, പൊരുത്തം – നിങ്ങളുടെ ജാതകം ആധാരമാക്കി മലയാളത്തിൽ.">
   <meta name="theme-color" content="#7b1e2b">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='24' cy='34' r='14' fill='none' stroke='%23b8862b' stroke-width='5'/%3E%3Ccircle cx='40' cy='34' r='14' fill='none' stroke='%237b1e2b' stroke-width='5'/%3E%3C/svg%3E">
@@ -15,17 +15,17 @@
 <body>
   <header class="site-header">
     <div class="wrap header-inner">
-      <a class="brand" href="#top" aria-label="ജീവിതപങ്കാളി">
+      <a class="brand" href="#top" aria-label="ജീവിതപങ്കാളി ജ്യോതിഷം">
         <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="24" cy="34" r="14"/><circle cx="40" cy="34" r="14"/><path d="M32 6l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg>
-        <span><b>ജീവിതപങ്കാളി</b><small>വിവാഹ ജ്യോതിഷം</small></span>
+        <span><b>ജീവിതപങ്കാളി ജ്യോതിഷം</b><small>വിവാഹവും ബന്ധങ്ങളും</small></span>
       </a>
       <nav class="nav" aria-label="പ്രധാന മെനു">
         <a href="#how">എങ്ങനെ</a>
-        <a href="#questions">ചോദ്യങ്ങൾ</a>
         <a href="#pricing">നിരക്ക്</a>
         <a href="#faq">സംശയങ്ങൾ</a>
       </nav>
-      <a class="btn btn-primary btn-sm" href="#consult">ജാതകം നോക്കുക</a>
+      <div class="who-chip" id="who-chip" hidden><span id="who-name"></span><button class="link" id="logout" type="button">പുറത്തുകടക്കുക</button></div>
+      <a class="btn btn-primary btn-sm" href="#consult" id="header-cta">ജാതകം നോക്കുക</a>
     </div>
   </header>
 
@@ -33,18 +33,13 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div class="hero-copy">
-          <p class="eyebrow">വേദജ്യോതിഷം · കേരളീയ സമ്പ്രദായം</p>
           <h1>നിങ്ങളുടെ ജീവിതപങ്കാളി<br><span>ആരായിരിക്കും?</span></h1>
           <p class="lead">ജനനസമയവും സ്ഥലവും നൽകൂ. ഏഴാം ഭാവം, ദാരകാരകൻ, നവാംശകം, ദശാകാലം എന്നിവ പരിശോധിച്ച് പങ്കാളിയുടെ സ്വഭാവം, ജോലി, നാട്, വിവാഹസമയം എന്നിവ ലളിതമായ മലയാളത്തിൽ വിശദീകരിക്കാം.</p>
+          <p class="tagline">വേദജ്യോതിഷ പ്രകാരം · കേരളത്തിലെ 7 ജ്യോതിഷികളുടെ പ്രവചനങ്ങളോടെ നിർമ്മിച്ചത്</p>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#consult">സൗജന്യമായി തുടങ്ങാം</a>
-            <a class="btn btn-ghost" href="#questions">എന്തൊക്കെ അറിയാം?</a>
+            <a class="btn btn-ghost" href="#pricing">നിരക്കുകൾ</a>
           </div>
-          <ul class="facts">
-            <li><b>ലാഹിരി</b> അയനാംശം</li>
-            <li><b>10</b> പൊരുത്തങ്ങൾ</li>
-            <li><b>UPI</b> പേയ്മെന്റ്</li>
-          </ul>
         </div>
         <div class="hero-art" aria-hidden="true">
           <svg viewBox="0 0 320 320">
@@ -75,7 +70,14 @@
             <h2>നിങ്ങളുടെ ജാതകം</h2>
             <button class="link" id="edit-profile" type="button" hidden>മാറ്റുക</button>
           </div>
-          <form id="birth-form" class="form" autocomplete="off" novalidate>
+          <form id="signin-form" class="form" novalidate>
+            <p class="fine" style="font-size:14px">തുടങ്ങാൻ നിങ്ങളുടെ പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>
+            <label class="field"><span>പേര്</span><input name="uname" required maxlength="40" autocomplete="name" placeholder="ഉദാ: അനു"></label>
+            <label class="field"><span>ഫോൺ നമ്പർ</span><input name="uphone" required inputmode="tel" autocomplete="tel" placeholder="ഉദാ: 9876543210"></label>
+            <p class="form-error" hidden></p>
+            <button class="btn btn-primary btn-block" type="submit">പ്രവേശിക്കുക</button>
+          </form>
+          <form id="birth-form" class="form" autocomplete="off" novalidate hidden>
             <label class="field">
               <span>പേര്</span>
               <input name="name" required maxlength="40" placeholder="ഉദാ: അനു">
@@ -130,34 +132,16 @@
         <ol class="steps3">
           <li><span>1</span><h3>ജനനവിവരങ്ങൾ</h3><p>ജനനത്തീയതി, കൃത്യമായ സമയം, ജനിച്ച സ്ഥലം എന്നിവ നൽകുക. സ്ഥലം ടൈപ്പ് ചെയ്യുമ്പോൾ തന്നെ ലിസ്റ്റിൽ വരും.</p></li>
           <li><span>2</span><h3>ജാതകം തയ്യാറാകുന്നു</h3><p>ലാഹിരി അയനാംശം അനുസരിച്ച് ലഗ്നം, ഗ്രഹസ്ഥിതി, നക്ഷത്രം, വിംശോത്തരി ദശ എന്നിവ കണക്കാക്കുന്നു.</p></li>
-          <li><span>3</span><h3>ചോദ്യം തിരഞ്ഞെടുക്കുക</h3><p>രണ്ട് ചോദ്യങ്ങൾ സൗജന്യമാണ്. ബാക്കിയുള്ളവ UPI വഴി പണമടച്ച് ഉടൻ തന്നെ കാണാം.</p></li>
+          <li><span>3</span><h3>ചോദ്യം തിരഞ്ഞെടുക്കുക</h3><p>രണ്ട് ചോദ്യങ്ങൾ സൗജന്യമാണ്. മറ്റുള്ളവയ്ക്ക് QR കോഡ് വഴി പണമടച്ച്, പണമടച്ച പേര് നൽകുക. പരിശോധിച്ചശേഷം ചോദ്യം തുറന്നുകിട്ടും.</p></li>
         </ol>
-      </div>
-    </section>
-
-    <section id="questions" class="section alt">
-      <div class="wrap">
-        <h2 class="section-title">എന്തൊക്കെ അറിയാം</h2>
-        <div class="topic-grid static" id="topic-showcase"></div>
       </div>
     </section>
 
     <section id="pricing" class="section">
       <div class="wrap">
         <h2 class="section-title">നിരക്ക്</h2>
-        <div class="price-grid">
-          <div class="price-card">
-            <h3>ഒരു ചോദ്യം</h3>
-            <p class="price"><span>₹</span><b data-price="single">49</b></p>
-            <ul><li>ഇഷ്ടമുള്ള ഒരു വിശദ ചോദ്യം</li><li>24 മണിക്കൂർ വീണ്ടും കാണാം</li><li>UPI QR / ആപ്പ് വഴി</li></ul>
-          </div>
-          <div class="price-card featured">
-            <p class="tag">ഏറ്റവും പ്രയോജനപ്രദം</p>
-            <h3>സമ്പൂർണ്ണ ജാതക പരിശോധന</h3>
-            <p class="price"><span>₹</span><b data-price="full">199</b></p>
-            <ul><li>എല്ലാ വിശദ ചോദ്യങ്ങളും</li><li>വിവാഹപ്പൊരുത്തം</li><li>സ്വന്തം ചോദ്യങ്ങൾ</li><li>30 ദിവസം ലഭ്യം</li></ul>
-          </div>
-        </div>
+        <p class="section-sub">രണ്ട് ചോദ്യങ്ങൾ സൗജന്യമാണ്. ബാക്കിയുള്ള ഓരോ ചോദ്യത്തിനും താഴെ കാണുന്ന തുക.</p>
+        <div class="price-list" id="price-list"></div>
       </div>
     </section>
 
@@ -165,17 +149,17 @@
       <div class="wrap narrow">
         <h2 class="section-title">സാധാരണ സംശയങ്ങൾ</h2>
         <details><summary>ജനനസമയം കൃത്യമായി അറിയില്ലെങ്കിൽ?</summary><p>ലഗ്നം ഏകദേശം രണ്ട് മണിക്കൂറിൽ ഒരിക്കൽ മാറുന്നതിനാൽ, കഴിയുന്നത്ര കൃത്യമായ സമയം നൽകുക. ജാതകക്കുറിപ്പിലോ ജനനസർട്ടിഫിക്കറ്റിലോ ഉള്ള സമയമാണ് ഏറ്റവും നല്ലത്. നക്ഷത്രവും കൂറും സമയം അൽപ്പം മാറിയാലും സാധാരണ മാറാറില്ല.</p></details>
-        <details><summary>പണമടച്ചത് എങ്ങനെ സ്ഥിരീകരിക്കും?</summary><p>ഓരോ ഓർഡറിനും പൈസ ഉൾപ്പെടെ ഒരു പ്രത്യേക തുക (ഉദാ: ₹49.37) നൽകും. ആ തുക ഞങ്ങളുടെ അക്കൗണ്ടിൽ എത്തുമ്പോൾ തന്നെ നിങ്ങളുടെ ചോദ്യം താനേ തുറക്കും. അതുകൊണ്ട് QR സ്കാൻ ചെയ്യുമ്പോൾ തുക മാറ്റരുത്.</p></details>
-        <details><summary>പണം പോയി, പക്ഷേ ചോദ്യം തുറന്നില്ല?</summary><p>ചിലപ്പോൾ ബാങ്ക് സന്ദേശം എത്താൻ കുറച്ച് മിനിറ്റ് വൈകാം. പേയ്മെന്റ് വിൻഡോയിൽ UTR നമ്പർ നൽകുക; എന്നിട്ടും ശരിയായില്ലെങ്കിൽ ഓർഡർ നമ്പറും UTR-ഉം സഹിതം ബന്ധപ്പെടുക.</p></details>
-        <details><summary>എന്റെ വിവരങ്ങൾ സുരക്ഷിതമാണോ?</summary><p>ജനനവിവരങ്ങൾ നിങ്ങളുടെ ബ്രൗസറിൽ മാത്രമാണ് സൂക്ഷിക്കുന്നത്. ജാതകം കണക്കാക്കാൻ മാത്രമാണ് അവ സെർവറിലേക്ക് അയയ്ക്കുന്നത്; എവിടെയും സേവ് ചെയ്യുന്നില്ല.</p></details>
+        <details><summary>പണമടച്ചത് എങ്ങനെ സ്ഥിരീകരിക്കും?</summary><p>QR കോഡിലേക്ക് പണമടച്ച ശേഷം, Google Pay / PhonePe പോലുള്ള ആപ്പിൽ കാണുന്ന നിങ്ങളുടെ പേര് നൽകുക. ഞങ്ങൾ പേയ്മെന്റ് പരിശോധിച്ച് ചോദ്യം തുറന്നുതരും. സാധാരണ കുറച്ച് മിനിറ്റുകൾക്കുള്ളിൽ ഇത് പൂർത്തിയാകും.</p></details>
+        <details><summary>പണമടച്ചിട്ടും ചോദ്യം തുറന്നില്ലേ?</summary><p>പരിശോധനയ്ക്ക് കുറച്ച് സമയമെടുത്തേക്കാം. ഈ പേജ് തുറന്നുവച്ചാൽ മതി – സ്ഥിരീകരിച്ചാലുടൻ ഫലം താനേ വരും. ഏറെ വൈകുന്നുവെങ്കിൽ പേയ്മെന്റ് വിൻഡോയിലെ WhatsApp ലിങ്ക് വഴി ബന്ധപ്പെടുക.</p></details>
+        <details><summary>എന്റെ വിവരങ്ങൾ സുരക്ഷിതമാണോ?</summary><p>ജനനവിവരങ്ങൾ നിങ്ങളുടെ ഫോണിൽ മാത്രമാണ് സൂക്ഷിക്കുന്നത്; ജാതകം കണക്കാക്കാൻ മാത്രമാണ് അവ ഉപയോഗിക്കുന്നത്. നിങ്ങളുടെ പേരും ഫോൺ നമ്പറും പേയ്മെന്റ് സ്ഥിരീകരിക്കാൻ മാത്രം ഉപയോഗിക്കുന്നു.</p></details>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="wrap footer-inner">
-      <p><b>ജീവിതപങ്കാളി</b> – വിവാഹ ജ്യോതിഷം</p>
-      <p class="fine">ജ്യോതിഷം ഒരു വഴികാട്ടി മാത്രമാണ്; ജീവിതത്തിലെ പ്രധാന തീരുമാനങ്ങൾ സ്വന്തം വിവേചനബുദ്ധിയോടെ എടുക്കുക. പേയ്മെന്റ്: UPI <span id="footer-upi"></span></p>
+      <p><b>ജീവിതപങ്കാളി ജ്യോതിഷം</b></p>
+      <p class="fine">വേദജ്യോതിഷ പ്രകാരം · കേരളത്തിലെ 7 ജ്യോതിഷികളുടെ പ്രവചനങ്ങളോടെ നിർമ്മിച്ചത്</p>
     </div>
   </footer>
 

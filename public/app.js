@@ -5,7 +5,7 @@
   const composerInput = $('#composer-input');
   const dialog = $('#pay-dialog');
   const payBody = $('#pay-body');
-  const K = { profile: 'jp_profile_v2', tokens: 'jp_tokens', pending: 'jp_pending_v2' };
+  const K = { profile: 'jp_profile_v2', account: 'jp_account', seen: 'jp_seen_requests' };
 
   const ICONS = {
     heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -22,10 +22,12 @@
   };
   const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ICONS.chat}</svg>`;
 
-  let config = { topics: {}, plans: { single: { amount: 49 }, full: { amount: 199 } }, upiId: '' };
+  let config = { topics: {}, upiId: '' };
   let profile = load(K.profile);
   let partner = null;
   let poller = null;
+  let account = load(K.account); // { session, name, phone }
+  let status = { unlocked: [], requests: [] };
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } }
@@ -40,10 +42,15 @@
     return { status: res.status, ...json };
   }
 
-  // ------------------------------------------------------------ tokens
-  const tokens = () => (load(K.tokens) || []).filter((t) => t.expires > Date.now());
-  const tokenFor = (topic) => { const t = tokens().find((x) => x.topic === '*' || x.topic === topic); return t && t.token; };
-  const addToken = (t) => save(K.tokens, [...tokens(), t]);
+  // ------------------------------------------------------------ account
+  const isOpen = (topic) => config.topics[topic]?.free || status.unlocked.includes(topic);
+  const pendingFor = (topic) => status.requests.find((r) => r.topic === topic && r.status === 'pending');
+  async function refreshStatus() {
+    if (!account) return;
+    const r = await api('/api/user', { session: account.session }).catch(() => ({}));
+    if (r.status === 401) return signOut();
+    if (r.user) status = { unlocked: r.unlocked || [], requests: r.requests || [] };
+  }
 
   // ------------------------------------------------------------ place picker (live search)
   function placePicker(host, initial) {
@@ -129,8 +136,9 @@
 
   function badgeFor(id, t) {
     if (t.free) return '<span class="badge free">സൗജന്യം</span>';
-    if (tokenFor(id)) return '<span class="badge open">ലഭ്യമാണ്</span>';
-    return `<span class="badge paid">₹${config.plans.single.amount}</span>`;
+    if (id !== 'custom' && isOpen(id)) return '<span class="badge open">ലഭ്യമാണ്</span>';
+    if (id !== 'custom' && pendingFor(id)) return '<span class="badge paid">പരിശോധനയിൽ</span>';
+    return `<span class="badge paid">₹${t.price}</span>`;
   }
   const topicCard = (id, t, tag = 'button') => `<${tag} class="topic" ${tag === 'button' ? `type="button" data-topic="${id}"` : ''}><span class="ic">${icon(t.icon)}</span><b>${esc(t.title)}</b><small>${esc(t.desc)}</small>${badgeFor(id, t)}</${tag}>`;
 
@@ -193,16 +201,17 @@
 
   // ------------------------------------------------------------ topics & readings
   function pickTopic(topic) {
+    if (!account) { say('<p>ആദ്യം പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>'); signinForm.scrollIntoView({ behavior: 'smooth' }); return; }
     if (!profile) { say('<p>ആദ്യം ഇടതുവശത്ത് ജനനവിവരങ്ങൾ നൽകുക.</p>'); form.scrollIntoView({ behavior: 'smooth' }); return; }
     const t = config.topics[topic];
     user(t.title);
-    if (!t.free && !tokenFor(topic)) return openPay(topic);
+    if (topic === 'custom') return askCustom();
+    if (!isOpen(topic)) return pendingFor(topic) ? waitingNote(topic) : openPay(topic);
     proceed(topic);
   }
 
   function proceed(topic) {
     if (topic === 'porutham') return askPartner();
-    if (topic === 'custom') return askCustom();
     runReading(topic);
   }
 
@@ -247,21 +256,22 @@
     composerInput.value = '';
     composer.hidden = true;
     user(q);
-    runReading('custom', q);
+    openPay('custom', q);
   });
   composerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); composer.requestSubmit(); } });
 
-  async function runReading(topic, question) {
+  async function runReading(topic, requestId) {
     const wait = typing();
-    const r = await api('/api/reading', { topic, self: profile, partner, question, token: tokenFor(topic) }).catch(() => ({ status: 0 }));
+    const r = await api('/api/reading', { topic, self: profile, partner, session: account?.session, requestId }).catch(() => ({ status: 0 }));
     wait.remove();
-    if (r.status === 402) return openPay(topic);
+    if (r.status === 402) return topic === 'custom' ? askCustom() : openPay(topic);
+    if (r.status === 401) return signOut();
     if (r.status !== 200) { say('<p>ക്ഷമിക്കണം, ഫലം തയ്യാറാക്കുന്നതിൽ ഒരു തടസ്സം നേരിട്ടു. ഒന്നുകൂടി ശ്രമിക്കാമോ?</p>'); return showTopics(); }
     const body = r.sections.map((s) => `<section class="report-sec"><h4>${esc(s.h)}</h4>${s.table ? `<table class="ptable">${s.table.map((row) => `<tr><td><span class="${row.ok ? 'ok-dot' : 'no-dot'}">${row.ok ? '✓' : '✕'}</span></td><td><b>${esc(row.name)}</b><small>${esc(row.note)}${row.detail ? ' · ' + esc(row.detail) : ''}</small></td></tr>`).join('')}</table>` : ''}${(s.p || []).map((p) => `<p>${esc(p)}</p>`).join('')}</section>`).join('');
     const m = bot(`<article class="report">
       <header class="report-head"><h3>${esc(r.title)}</h3><div class="chips">${r.summary.map((s) => `<span>${esc(s)}</span>`).join('')}</div></header>
       <div class="report-body">${body}</div>
-      <footer class="report-foot"><p class="fine">${esc(r.disclaimer)}</p><button class="btn btn-ghost btn-sm share" type="button">പങ്കിടുക / പകർത്തുക</button></footer>
+      <footer class="report-foot"><span></span><button class="btn btn-ghost btn-sm share" type="button">പങ്കിടുക / പകർത്തുക</button></footer>
     </article>`);
     $('.share', m).addEventListener('click', async () => {
       const text = `${r.title}\n\n` + r.sections.map((s) => `${s.h}\n${(s.table || []).map((t) => `${t.ok ? '✓' : '✕'} ${t.name}`).join('\n')}${s.table ? '\n' : ''}${(s.p || []).join('\n')}`).join('\n\n');
@@ -273,106 +283,111 @@
     requestAnimationFrame(() => m.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
-  // ------------------------------------------------------------ payment
-  function openPay(topic) {
+  // ------------------------------------------------------------ payment (manual: pay to QR, enter payer name, admin approves)
+  function openPay(topic, question) {
     const t = config.topics[topic];
-    const { single, full } = config.plans;
+    const qrSrc = `/api/topics?qr=1&v=${config.qrVersion}`;
+    const upiLink = config.upiId ? `upi://pay?pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payee || '')}&am=${t.price}&cu=INR` : '';
     payBody.innerHTML = `
-      <div class="dlg-head"><div><h3 id="pay-title">വിശദ ഫലം കാണാൻ</h3><p>"${esc(t.title)}"</p></div><button class="x" type="button" aria-label="അടയ്ക്കുക">×</button></div>
-      <div class="plans">
-        <button class="plan" data-plan="single" type="button"><b>ഈ ചോദ്യം മാത്രം</b><small>24 മണിക്കൂർ വീണ്ടും കാണാം</small><span class="amt">₹${single.amount}</span></button>
-        <button class="plan" data-plan="full" type="button"><b>സമ്പൂർണ്ണ ജാതക പരിശോധന</b><small>എല്ലാ ചോദ്യങ്ങളും പൊരുത്തവും · 30 ദിവസം</small><span class="amt">₹${full.amount}</span></button>
-      </div>
-      <p class="fine" style="margin-top:14px">Google Pay, PhonePe, Paytm, BHIM തുടങ്ങി ഏത് UPI ആപ്പും ഉപയോഗിക്കാം.</p>`;
+      <div class="dlg-head"><div><h3 id="pay-title">${esc(t.title)}</h3><p>ഈ ചോദ്യത്തിനുള്ള തുക: <b>₹${t.price}</b></p></div><button class="x" type="button" aria-label="അടയ്ക്കുക">×</button></div>
+      <div class="pay-steps">
+        <div class="pay-step">
+          <h4><span>1</span>താഴെയുള്ള QR കോഡിലേക്ക് ₹${t.price} അടയ്ക്കുക</h4>
+          <img class="qr-img" src="${qrSrc}" alt="പേയ്മെന്റ് QR കോഡ്">
+          <div class="qr-actions">
+            <a class="btn btn-ghost btn-sm" href="${qrSrc}&download=1" download>QR ഡൗൺലോഡ് ചെയ്യുക</a>
+            ${isMobile && upiLink ? `<a class="btn btn-primary btn-sm" href="${esc(upiLink)}">UPI ആപ്പിൽ തുറക്കുക</a>` : ''}
+          </div>
+          ${config.upiId ? `<p class="fine" style="text-align:center;margin-top:8px">UPI ഐഡി: <b>${esc(config.upiId)}</b></p>` : ''}
+        </div>
+        <form class="pay-step" id="payer-form">
+          <h4><span>2</span>പണമടച്ച പേര് നൽകുക</h4>
+          <label class="field"><span>Google Pay / PhonePe / UPI ആപ്പിൽ കാണുന്ന നിങ്ങളുടെ പേര്</span><input name="payer" required maxlength="80" value="${esc(account?.name || '')}"></label>
+          <p class="fine" style="margin:6px 0 10px">ഇതിനകം പണമടച്ചെങ്കിൽ പേര് മാത്രം നൽകിയാൽ മതി.</p>
+          <p class="form-error" hidden></p>
+          <button class="btn btn-primary btn-block" type="submit">പണമടച്ചു – സ്ഥിരീകരിക്കുക</button>
+        </form>
+      </div>`;
     $('.x', payBody).onclick = () => dialog.close();
-    payBody.querySelectorAll('.plan').forEach((b) => b.addEventListener('click', () => startOrder(b.dataset.plan, topic, b)));
+    const f = $('#payer-form', payBody);
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = $('.form-error', f);
+      if (!f.payer.value.trim()) { err.textContent = 'പണമടച്ച പേര് നൽകുക.'; err.hidden = false; return; }
+      f.querySelector('button').disabled = true;
+      const r = await api('/api/order', { session: account.session, topic, payerName: f.payer.value, question }).catch(() => ({ status: 0 }));
+      f.querySelector('button').disabled = false;
+      if (r.status === 401) { dialog.close(); return signOut(); }
+      if (r.status !== 200) { err.textContent = 'അയയ്ക്കാനായില്ല. വീണ്ടും ശ്രമിക്കുക.'; err.hidden = false; return; }
+      status.requests.push({ ...r.request, payerName: f.payer.value, question });
+      dialog.close();
+      waitingNote(topic);
+      startPolling();
+    });
     if (!dialog.open) dialog.showModal();
   }
 
-  async function startOrder(plan, topic, btn) {
-    payBody.querySelectorAll('.plan').forEach((b) => (b.disabled = true));
-    btn.querySelector('.amt').innerHTML = '<span class="spinner"></span>';
-    const o = await api('/api/order', { plan, topic }).catch(() => ({ status: 0 }));
-    if (o.status !== 200) {
-      payBody.querySelectorAll('.plan').forEach((b) => (b.disabled = false));
-      btn.querySelector('.amt').textContent = 'വീണ്ടും';
-      return;
-    }
-    save(K.pending, { order: o.order, id: o.id, amount: o.amount, topic, expires: o.expires });
-    renderPay(o, topic);
+  function waitingNote(topic) {
+    const wa = config.whatsapp ? ` <a href="https://wa.me/${esc(config.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : '';
+    say(`<p>നന്ദി! 🙏 "${esc(config.topics[topic].title)}" എന്ന ചോദ്യത്തിനുള്ള പേയ്മെന്റ് ഞങ്ങൾ പരിശോധിക്കുകയാണ്.</p><p>സ്ഥിരീകരിച്ചാലുടൻ ഫലം ഇവിടെ താനേ വരും – ഈ പേജ് തുറന്നുവയ്ക്കുക.${wa ? ' സംശയങ്ങൾക്ക്:' + wa : ''}</p>`);
   }
 
-  function renderPay(o, topic) {
-    payBody.innerHTML = `
-      <div class="dlg-head"><div><h3>UPI വഴി പണമടയ്ക്കുക</h3><p class="order-id">ഓർഡർ ${esc(o.id)}</p></div><button class="x" type="button" aria-label="അടയ്ക്കുക">×</button></div>
-      <div class="paybox">
-        <div class="amount-big">₹${esc(o.amount)}<small>പൈസ ഉൾപ്പെടെ ഈ കൃത്യം തുക തന്നെ അടയ്ക്കുക – അങ്ങനെയാണ് നിങ്ങളുടെ പേയ്മെന്റ് തിരിച്ചറിയുന്നത്</small></div>
-        ${isMobile ? `<a class="btn btn-primary btn-block" href="${esc(o.upi)}">UPI ആപ്പിൽ പണമടയ്ക്കുക</a><p class="fine">അല്ലെങ്കിൽ മറ്റൊരു ഫോണിൽ നിന്ന് ഈ QR സ്കാൻ ചെയ്യുക</p>` : '<p class="fine" style="margin:0">ഫോണിലെ UPI ആപ്പ് ഉപയോഗിച്ച് ഈ QR കോഡ് സ്കാൻ ചെയ്യുക</p>'}
-        <div class="qr">${o.qr}</div>
-        <div class="upi-row">UPI ഐഡി <code>${esc(o.upiId)}</code><button class="link copy" type="button">കോപ്പി</button></div>
-        <div class="status" id="pay-status"><span class="spinner"></span><span>പേയ്മെന്റ് കാത്തിരിക്കുന്നു… <span id="pay-timer"></span></span></div>
-        <details class="utr">
-          <summary>പണമടച്ചിട്ടും സ്ഥിരീകരിച്ചില്ലേ?</summary>
-          <p class="fine">UPI ആപ്പിലെ ഇടപാട് വിവരങ്ങളിൽ കാണുന്ന 12 അക്ക UTR / UPI Reference നമ്പർ നൽകുക.</p>
-          <form><input name="utr" inputmode="numeric" maxlength="12" placeholder="ഉദാ: 412345678901"><button class="btn btn-ghost btn-sm" type="submit">പരിശോധിക്കുക</button></form>
-          <p class="utr-msg" hidden></p>
-          ${config.whatsapp ? `<p class="fine" style="margin-top:8px">സഹായം വേണോ? <a href="https://wa.me/${esc(config.whatsapp)}?text=${encodeURIComponent(`നമസ്കാരം, ഓർഡർ ${o.id} – ₹${o.amount} അടച്ചു.`)}" target="_blank" rel="noopener">WhatsApp-ൽ ബന്ധപ്പെടുക</a></p>` : ''}
-        </details>
-      </div>`;
-    $('.x', payBody).onclick = () => dialog.close();
-    $('.copy', payBody).onclick = (e) => navigator.clipboard?.writeText(o.upiId).then(() => { e.target.textContent = 'കോപ്പി ചെയ്തു ✓'; });
-    const f = $('.utr form', payBody);
-    f.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const msg = $('.utr-msg', payBody);
-      const utr = f.utr.value.replace(/\D/g, '');
-      if (utr.length !== 12) { msg.hidden = false; msg.className = 'utr-msg err'; msg.textContent = '12 അക്കമുള്ള UTR നമ്പർ നൽകുക.'; return; }
-      const r = await api('/api/verify', { order: o.order, utr });
-      if (r.status === 200 && r.token) return paid(r, topic);
-      msg.hidden = false;
-      msg.className = r.status === 202 ? 'utr-msg' : 'utr-msg err';
-      msg.textContent = r.status === 202 ? 'ഈ UTR-ലുള്ള പേയ്മെന്റ് ഇതുവരെ ബാങ്കിൽ നിന്ന് എത്തിയിട്ടില്ല. എത്തിയാലുടൻ താനേ തുറക്കും – ഈ വിൻഡോ തുറന്നുവയ്ക്കുക.'
-        : r.error === 'utr_used' ? 'ഈ UTR മറ്റൊരു ഓർഡറിന് ഉപയോഗിച്ചതാണ്.'
-          : r.error === 'amount_low' ? 'ഈ UTR-ലെ തുക ഓർഡർ തുകയേക്കാൾ കുറവാണ്.' : 'പരിശോധിക്കാനായില്ല. വീണ്ടും ശ്രമിക്കുക.';
-    });
-    startPolling(o, topic);
-  }
-
-  function startPolling(o, topic) {
+  // Watch pending requests; when the admin approves one, show its answer.
+  function startPolling() {
     clearInterval(poller);
-    const tick = async () => {
-      const left = o.expires - Date.now();
-      const tEl = $('#pay-timer');
-      if (tEl) tEl.textContent = left > 0 ? `(${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')})` : '';
-      if (left < -10 * 60 * 1000) { clearInterval(poller); drop(K.pending); return; }
-      if (Math.floor(Date.now() / 1000) % 4) return;
-      const r = await api('/api/verify', { order: o.order }).catch(() => ({}));
-      if (r.status === 200 && r.token) paid(r, topic);
-    };
-    poller = setInterval(tick, 1000);
-    tick();
+    poller = setInterval(checkApprovals, 8000);
   }
-  document.addEventListener('visibilitychange', async () => {
-    const p = load(K.pending);
-    if (document.visibilityState === 'visible' && p) {
-      const r = await api('/api/verify', { order: p.order }).catch(() => ({}));
-      if (r.status === 200 && r.token) paid(r, p.topic);
+  async function checkApprovals() {
+    const before = new Set(status.requests.filter((r) => r.status === 'pending').map((r) => r.id));
+    await refreshStatus();
+    const seen = new Set(load(K.seen) || []);
+    const fresh = status.requests.filter((r) => r.status !== 'pending' && !seen.has(r.id) && (before.has(r.id) || r.topic === 'custom'));
+    for (const r of fresh) {
+      seen.add(r.id);
+      save(K.seen, [...seen]);
+      const t = config.topics[r.topic];
+      if (r.status === 'approved') {
+        say(`<p>✓ പേയ്മെന്റ് സ്ഥിരീകരിച്ചു. നന്ദി! "${esc(t.title)}" – നിങ്ങളുടെ ഫലം തയ്യാറാക്കുന്നു…</p>`);
+        if (r.topic === 'custom') runReading('custom', r.id); else proceed(r.topic);
+      } else {
+        say(`<p>ക്ഷമിക്കണം, "${esc(t.title)}" എന്ന ചോദ്യത്തിനുള്ള പേയ്മെന്റ് കണ്ടെത്താനായില്ല. പണമടച്ച പേര് ശരിയാണോ എന്ന് പരിശോധിച്ച് വീണ്ടും ശ്രമിക്കുക.</p>`);
+      }
     }
+    if (!status.requests.some((r) => r.status === 'pending')) clearInterval(poller);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && status.requests.some((r) => r.status === 'pending')) checkApprovals(); });
+
+  // ------------------------------------------------------------ sign in
+  const signinForm = $('#signin-form');
+  function showSignedIn() {
+    signinForm.hidden = true;
+    $('#who-chip').hidden = false;
+    $('#who-name').textContent = account.name;
+  }
+  function signOut() {
+    clearInterval(poller);
+    account = null; profile = null; status = { unlocked: [], requests: [] };
+    [K.account, K.profile, K.seen].forEach(drop);
+    location.reload();
+  }
+  $('#logout').addEventListener('click', signOut);
+  signinForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('.form-error', signinForm);
+    const name = signinForm.uname.value.trim();
+    const phone = signinForm.uphone.value.trim();
+    if (name.length < 2) { err.textContent = 'ദയവായി പേര് നൽകുക.'; err.hidden = false; return; }
+    if (phone.replace(/\D/g, '').length < 10) { err.textContent = 'ശരിയായ ഫോൺ നമ്പർ നൽകുക.'; err.hidden = false; return; }
+    const r = await api('/api/user', { action: 'login', name, phone }).catch(() => ({ status: 0 }));
+    if (r.status !== 200) { err.textContent = r.error === 'bad_phone' ? 'ശരിയായ ഫോൺ നമ്പർ നൽകുക.' : 'പ്രവേശിക്കാനായില്ല. വീണ്ടും ശ്രമിക്കുക.'; err.hidden = false; return; }
+    account = { session: r.session, name: r.user.name, phone: r.user.phone };
+    save(K.account, account);
+    await refreshStatus();
+    showSignedIn();
+    form.hidden = false;
+    form.elements.name.value = form.elements.name.value || name;
+    say(`<p>സ്വാഗതം, ${esc(name)}! 🙏 ഇനി നിങ്ങളുടെ ജനനവിവരങ്ങൾ നൽകുക.</p>`);
   });
-
-  function paid(t, topic) {
-    clearInterval(poller);
-    drop(K.pending);
-    addToken(t);
-    const st = $('#pay-status');
-    if (st && dialog.open) {
-      st.className = 'status ok';
-      st.innerHTML = '✓ പേയ്മെന്റ് ലഭിച്ചു. നന്ദി!';
-      setTimeout(() => dialog.close(), 1200);
-    }
-    say('<p>✓ പേയ്മെന്റ് ലഭിച്ചു. നന്ദി! നിങ്ങളുടെ ഫലം തയ്യാറാക്കുന്നു…</p>');
-    proceed(topic);
-  }
 
   // ------------------------------------------------------------ boot
   $('#show-topics').addEventListener('click', () => (profile ? showTopics('എന്താണ് അറിയേണ്ടത്?') : form.scrollIntoView({ behavior: 'smooth' })));
@@ -380,17 +395,25 @@
   (async () => {
     const r = await api('/api/topics').catch(() => null);
     if (r && r.topics) config = r;
-    document.querySelectorAll('[data-price]').forEach((n) => { n.textContent = config.plans[n.dataset.price].amount; });
-    $('#footer-upi').textContent = config.upiId;
-    $('#topic-showcase').innerHTML = Object.entries(config.topics).map(([id, t]) => topicCard(id, t, 'div')).join('');
+    $('#price-list').innerHTML = Object.values(config.topics).map((t) => `<div><span>${esc(t.title)}</span><b>${t.free ? 'സൗജന്യം' : '₹' + t.price}</b></div>`).join('');
+    if (!account) {
+      signinForm.hidden = false;
+      say('<p>നമസ്കാരം! 🙏</p><p>ജാതകം നോക്കി നിങ്ങളുടെ ഭാവി ജീവിതപങ്കാളിയെക്കുറിച്ച് – സ്വഭാവം, ജോലി, നാട്, വിവാഹസമയം, പ്രണയവിവാഹമോ എന്നതൊക്കെ – വിശദമായി പറഞ്ഞുതരാം.</p><p>തുടങ്ങാൻ നിങ്ങളുടെ പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>');
+      return;
+    }
+    showSignedIn();
+    await refreshStatus();
+    if (!account) return;
     if (profile) {
       await showProfile();
-      say(`<p>വീണ്ടും സ്വാഗതം, ${esc(profile.name)}! 🙏 നിങ്ങളുടെ ജാതകം തയ്യാറാണ്.</p>`);
+      say(`<p>വീണ്ടും സ്വാഗതം, ${esc(account.name)}! 🙏 നിങ്ങളുടെ ജാതകം തയ്യാറാണ്.</p>`);
       showTopics('ഇന്ന് എന്താണ് അറിയേണ്ടത്?');
-      const p = load(K.pending);
-      if (p && p.expires > Date.now() - 10 * 60 * 1000) startPolling(p, p.topic);
+      await checkApprovals();
+      if (status.requests.some((q) => q.status === 'pending')) startPolling();
     } else {
-      say('<p>നമസ്കാരം! 🙏</p><p>ജാതകം നോക്കി നിങ്ങളുടെ ഭാവി ജീവിതപങ്കാളിയെക്കുറിച്ച് – സ്വഭാവം, ജോലി, നാട്, വിവാഹസമയം, പ്രണയവിവാഹമോ എന്നതൊക്കെ – വിശദമായി പറഞ്ഞുതരാം.</p><p>തുടങ്ങാൻ നിങ്ങളുടെ ജനനവിവരങ്ങൾ നൽകുക.</p>');
+      form.hidden = false;
+      form.elements.name.value = account.name;
+      say(`<p>സ്വാഗതം, ${esc(account.name)}! 🙏 നിങ്ങളുടെ ജനനവിവരങ്ങൾ നൽകുക.</p>`);
     }
   })();
 })();

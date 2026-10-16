@@ -1,7 +1,7 @@
 const pay = require('../lib/pay');
 const store = require('../lib/store');
+const accounts = require('../lib/accounts');
 const { getSettings, saveSettings } = require('../lib/settings');
-const telegram = require('../lib/telegram');
 const { send, body } = require('./_util');
 
 // Owner admin panel API. Every call needs the ADMIN_KEY.
@@ -15,79 +15,50 @@ module.exports = async (req, res) => {
   try {
     switch (input.action || 'dashboard') {
       case 'dashboard': {
-        const [orders, credits, settings] = await Promise.all([store.list('order/', 150), store.list('utr/', 150), getSettings()]);
-        orders.sort((a, b) => b.created - a.created);
-        credits.sort((a, b) => b.at - a.at);
-        const paid = orders.filter((o) => o.status === 'paid');
+        const [requests, users, payments, settings] = await Promise.all([
+          store.list('req/', 300), store.list('user/', 500), store.list('pay/', 100), getSettings(),
+        ]);
+        requests.sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.created - a.created);
+        users.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+        payments.sort((a, b) => b.at - a.at);
+        const approved = requests.filter((r) => r.status === 'approved');
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        const sum = (list) => list.reduce((s, o) => s + o.paise, 0);
         const host = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
-        const key = process.env.WEBHOOK_SECRET || '';
         return send(res, 200, {
           stats: {
-            revenueToday: pay.rupees(sum(paid.filter((o) => (o.paidAt || 0) >= today.getTime()))),
-            revenueTotal: pay.rupees(sum(paid)),
-            paidCount: paid.length,
-            pendingCount: orders.filter((o) => o.status !== 'paid' && o.exp > Date.now()).length,
-            unmatchedCredits: credits.filter((c) => !c.orderId).length,
+            pending: requests.filter((r) => r.status === 'pending').length,
+            revenueToday: approved.filter((r) => (r.decidedAt || 0) >= today.getTime()).reduce((s, r) => s + (r.amount || 0), 0),
+            revenueTotal: approved.reduce((s, r) => s + (r.amount || 0), 0),
+            users: users.length,
           },
-          orders: orders.map((o) => ({ ...o, amount: pay.rupees(o.paise), expired: o.status !== 'paid' && o.exp < Date.now() })),
-          credits: credits.map((c) => ({ ...c, amount: pay.rupees(c.paise) })),
+          requests,
+          users: users.map((u) => ({ phone: u.phone, name: u.name, created: u.created, lastSeen: u.lastSeen, unlocked: Object.keys(u.unlocked || {}), requests: (u.requests || []).length })),
+          payments,
           settings,
           persistent: store.persistent,
-          webhooks: {
-            sms: key && `${host}/api/webhook?key=${key}&source=sms`,
-            notification: key && `${host}/api/webhook?key=${key}&source=notification`,
-            email: key && `${host}/api/webhook?key=${key}&source=email`,
-            api: key && `${host}/api/webhook?key=${key}&source=api`,
-            razorpay: `${host}/api/webhook?source=razorpay`,
-            razorpayConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET),
-          },
+          webhook: process.env.WEBHOOK_SECRET ? `${host}/api/webhook?key=${process.env.WEBHOOK_SECRET}&source=notification` : null,
         });
       }
-      case 'mark_paid': {
-        const id = String(input.orderId || '').toUpperCase();
-        const rec = await pay.markPaid(id, String(input.utr || '').replace(/\D/g, ''), 'admin');
-        return rec ? send(res, 200, { ok: true, order: rec }) : send(res, 404, { error: 'order not found' });
+      case 'approve':
+      case 'reject':
+        return send(res, 200, { ok: true, request: await accounts.decide(String(input.id || ''), input.action === 'approve', input.note) });
+      case 'settings':
+        return send(res, 200, { ok: true, settings: await saveSettings(input.settings || {}) });
+      case 'qr_upload': {
+        const m = String(input.dataUrl || '').match(/^data:(image\/(png|jpe?g|webp|gif|svg\+xml));base64,([A-Za-z0-9+/=]+)$/);
+        if (!m) return send(res, 400, { error: 'Upload a PNG, JPG, WEBP or SVG image' });
+        if (m[3].length > 2.8e6) return send(res, 400, { error: 'Image is too large (max 2 MB)' });
+        await store.set('config/qr', { dataUrl: input.dataUrl, at: Date.now() });
+        return send(res, 200, { ok: true, settings: await saveSettings({ qrUpdatedAt: Date.now() }) });
       }
-      case 'code': {
-        const id = String(input.orderId || '').toUpperCase();
-        if (!/^JP[A-Z0-9]+$/.test(id)) return send(res, 400, { error: 'invalid order id' });
-        return send(res, 200, { orderId: id, code: pay.unlockCode(id) });
-      }
-      case 'add_credit': {
-        const paise = Math.round(Number(input.amount) * 100);
-        const utr = String(input.utr || '').replace(/\D/g, '');
-        if (!paise || paise < 100) return send(res, 400, { error: 'invalid amount' });
-        if (utr && utr.length !== 12) return send(res, 400, { error: 'UTR must be 12 digits' });
-        const r = await pay.recordCredit({ paise, utr, raw: `manual: ${String(input.note || '').slice(0, 200)}`, source: 'manual' });
-        return send(res, 200, { ok: true, ...r });
-      }
-      case 'parse': {
-        return send(res, 200, { parsed: pay.parseCredit(String(input.text || '')) });
-      }
-      case 'tg_status':
-        return send(res, 200, await telegram.status());
-      case 'tg_connect': {
-        const host = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
-        await telegram.connect(input.token, host);
-        return send(res, 200, await telegram.status());
-      }
-      case 'tg_disconnect':
-        await telegram.disconnect();
-        return send(res, 200, await telegram.status());
-      case 'tg_allow':
-        await telegram.setAllowed(input.chatId, input.allow !== false);
-        return send(res, 200, await telegram.status());
-      case 'settings': {
-        const s = await saveSettings(input.settings || {});
-        return send(res, 200, { ok: true, settings: s });
-      }
+      case 'qr_reset':
+        await store.set('config/qr', { dataUrl: '', at: Date.now() });
+        return send(res, 200, { ok: true, settings: await saveSettings({ qrUpdatedAt: Date.now() }) });
       default:
         return send(res, 400, { error: 'unknown action' });
     }
   } catch (e) {
     console.error('[admin]', e);
-    send(res, String(input.action || '').startsWith('tg_') ? 400 : 500, { error: String(input.action || '').startsWith('tg_') ? e.message : 'server_error' });
+    send(res, 400, { error: e.message });
   }
 };

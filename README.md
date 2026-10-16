@@ -1,4 +1,4 @@
-# ജീവിതപങ്കാളി ജ്യോതിഷം – Malayalam relationship astrology chatbot
+# ജീവിതപങ്കാളി ജ്യോതിഷം
 
 A Malayalam chatbot website for marriage and relationship astrology: who your future spouse will be, their
 character, job, place, appearance, love vs arranged marriage, marriage timing, ചൊവ്വാദോഷം and
@@ -9,11 +9,11 @@ character, job, place, appearance, love vs arranged marriage, marriage timing, �
 | Part | File |
 | --- | --- |
 | Chat UI (Malayalam) | `public/index.html`, `public/app.js`, `public/style.css` |
-| Owner page that generates unlock codes | `public/admin.html` |
+| Admin panel: approve payments, users, prices, QR | `public/admin.html` |
 | Sidereal (Lahiri) chart, Vimshottari dasha | `lib/astro.js` |
 | Malayalam readings and the 10 Kerala poruthams | `lib/reading.js`, `lib/texts.js` |
 | Ask Soma (AstroSoma) client | `lib/soma.js` |
-| Signed UPI orders and access tokens | `lib/pay.js` |
+| Sessions, payment requests, settings | `lib/pay.js`, `lib/accounts.js`, `lib/settings.js` |
 | Serverless API (Vercel) | `api/*.js` |
 
 **Ask Soma.** When `ASKSOMA_MCP_URL` is set, every reading also asks Ask Soma (the `ask_soma` and
@@ -25,33 +25,24 @@ configured or fails, the built-in engine answers on its own, so the site keeps w
 - Paid: love or arranged marriage, spouse's job, spouse's place, marriage timing, appearance, ചൊവ്വാദോഷം,
   porutham, and the user's own question.
 
-**Payment flow (BharatPe UPI `BHARATPE2R0F0X6K4D61686@unitype`).**
-1. The user picks a plan (default ₹49 for one question, ₹199 for everything; editable in the admin panel).
-2. The server creates an order with a **unique amount** such as ₹49.37, valid for 30 minutes. The payment dialog shows
-   a UPI QR code, a `upi://pay` button on mobile, and a live "waiting for payment" status.
-3. A payment report reaches `/api/webhook`, and the order with that exact amount unlocks automatically. Reports can
-   come from any of these sources:
-   - **App notification**: BharatPe / PhonePe Business / Paytm alerts, forwarded by MacroDroid, Tasker or Notification Forwarder (`source=notification`).
-   - **SMS**: bank or BharatPe SMS from an Android SMS forwarder or an iPhone Shortcuts automation (`source=sms`).
-   - **E-mail**: payment alert e-mails, through the Gmail Apps Script shown in the admin panel, or Mailgun / CloudMailin / Zapier / Make (`source=email`).
-   - **Telegram**: a bot connected in the admin panel reads payment alerts posted in approved chats or channels (`/api/telegram`, verified with Telegram's secret-token header).
-   - **Structured API**: `{"amount": 49.37, "utr": "…"}` from any system (`source=api`).
-   - **Razorpay**: `payment.captured` webhooks, signature-verified with `RAZORPAY_WEBHOOK_SECRET` (`source=razorpay`).
+**Sign-in.** Users sign in with their name and phone number. There's no OTP. The session is HMAC-signed with
+`PAYMENT_SECRET`.
 
-   Reports without a UTR, such as most BharatPe push notifications, are matched by amount alone and de-duplicated by
-   their text.
-4. If the user changed the amount, they can type their UTR instead. It's matched against recorded payments, and each
-   UTR can be used once.
-5. In the **admin panel** (`/admin.html`, log in with `ADMIN_KEY`) you can:
-   - see revenue, orders and received payments;
-   - mark an order paid, which unlocks the customer's screen right away;
-   - add a payment by hand, or generate an unlock code;
-   - test-parse a real SMS or notification;
-   - copy the webhook URLs and follow the setup guides;
-   - change the UPI ID, payee name, prices, validity periods and support WhatsApp number without redeploying.
+**Payments (manual).**
+1. The user picks a paid question and sees its price (set per question in the admin panel) and the payment QR code.
+   They can download the QR or open it in a UPI app.
+2. They pay, then enter the name shown in their Google Pay / UPI app. Someone who has already paid enters only the
+   name. For "own question", the question text is sent with the request.
+3. In `/admin.html` (log in with `ADMIN_KEY`), the owner checks BharatPe for that payer name and amount, then clicks
+   **Approve**. The customer's page polls and shows the answer automatically. **Reject** asks them to re-check the
+   name.
+4. The admin panel also lists all users with their unlocked questions and custom questions, lets the owner upload or
+   replace the payment QR image, change per-question prices, UPI ID, payee name and WhatsApp number, and shows an
+   optional feed of payments forwarded to `/api/webhook?key=WEBHOOK_SECRET` (for example by the "Notification to
+   Webhook" app for BharatPe). That feed only helps the owner check payments; it never unlocks anything by itself.
 
-Orders, payments and settings are stored in a private **Vercel Blob** store (`BLOB_READ_WRITE_TOKEN`). Locally, an
-in-memory store is used instead.
+Users, requests, settings and the QR image are stored in a private **Vercel Blob** store (`BLOB_READ_WRITE_TOKEN`).
+Locally, an in-memory store is used instead.
 
 ## Environment variables
 
@@ -60,13 +51,10 @@ in-memory store is used instead.
 | `PAYMENT_SECRET` | **Required.** Long random string used to sign orders and tokens. |
 | `ADMIN_KEY` | Password for `/admin.html`. |
 | `UPI_ID` | Default UPI ID (the admin panel setting overrides it). |
-| `WEBHOOK_SECRET` | Key every webhook source except Razorpay must send (`?key=` or `x-webhook-secret` header). |
-| `RAZORPAY_WEBHOOK_SECRET` | Optional. Enables the signed Razorpay webhook. |
+| `WEBHOOK_SECRET` | Key for the optional payment-notification feed (`?key=` or `x-webhook-secret` header). |
 | `BLOB_READ_WRITE_TOKEN` | Set automatically by the connected Vercel Blob store. |
-| `SMS_SENDER_FILTER` | Optional regex for the SMS sender, e.g. `HDFC`. |
 | `UPI_PAYEE_NAME` | Name shown in UPI apps. |
-| `PRICE_SINGLE` / `PRICE_FULL` | Defaults `49` / `199` (₹). |
-| `AUTO_UNLOCK` | `true` to unlock on any UTR without a matching credit (not recommended). |
+| `PRICE_SINGLE` | Default price per question (₹49); change prices in the admin panel. |
 | `ASKSOMA_MCP_URL` | Ask Soma MCP endpoint (streamable HTTP). |
 | `ASKSOMA_API_KEY` | Bearer token for Ask Soma, if the endpoint requires one. |
 

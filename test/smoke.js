@@ -4,135 +4,88 @@ process.env.ADMIN_KEY = 'test-admin';
 process.env.WEBHOOK_SECRET = 'hooksecret';
 require('../dev-server');
 const base = `http://localhost:${process.env.PORT}`;
-const post = (p, d, raw) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': raw ? 'text/plain' : 'application/json' }, body: raw ? d : JSON.stringify(d) }).then(async (r) => ({ status: r.status, ...(await r.json()) }));
+const post = (p, d) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }).then(async (r) => ({ status: r.status, ...(await r.json().catch(() => ({}))) }));
+const admin = (action, extra = {}) => post('/api/admin', { key: 'test-admin', action, ...extra });
 const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1); } console.log('ok -', m); };
 
 (async () => {
   await new Promise((r) => setTimeout(r, 200));
   const self = { name: 'അജിത്', gender: 'male', dob: '1996-05-14', tob: '08:30', lat: 10.8505, lon: 76.2711, tz: 'Asia/Kolkata' };
   const partner = { name: 'മീര', dob: '1998-11-02', tob: '17:45', lat: 9.9312, lon: 76.2673, tz: 'Asia/Kolkata' };
+
   const cfg = await fetch(base + '/api/topics').then((r) => r.json());
-  assert(cfg.upiId === 'BHARATPE2R0F0X6K4D61686@unitype' && cfg.webhook, 'config: BharatPe UPI + webhook mode');
-  const chart = await post('/api/chart', self);
-  assert(chart.signs && chart.signs.length === 12 && chart.lagna, 'chart endpoint');
-  for (const [id, t] of Object.entries(cfg.topics)) {
-    const r = await post('/api/reading', { topic: id, self, partner, question: 'എന്റെ പങ്കാളിയുടെ ജോലി എന്തായിരിക്കും?' });
-    assert(t.free ? r.status === 200 && r.sections.length >= 3 : r.status === 402, `${id} ${t.free ? 'free, ' + (r.sections || []).length + ' sections' : 'requires payment'}`);
-  }
+  assert(cfg.upiId === 'BHARATPE2R0F0X6K4D61686@unitype' && cfg.topics.spouse_job.price === 49 && cfg.topics.spouse_nature.price === 0, 'config: BharatPe UPI, ₹49 per paid question');
+  const qr = await fetch(base + '/api/topics?qr=1&download=1');
+  assert(qr.status === 200 && qr.headers.get('content-type') === 'image/png' && /attachment/.test(qr.headers.get('content-disposition')), 'auto-generated QR downloadable as PNG');
+  assert((await post('/api/chart', self)).signs, 'chart endpoint');
 
-  // 1) Webhook auto-match by unique amount
-  const o = await post('/api/order', { plan: 'full' });
-  assert(o.status === 200 && /^199\.\d\d$/.test(o.amount) && o.amount !== '199.00' && o.upi.includes('pa=BHARATPE2R0F0X6K4D61686%40unitype'), `order has unique amount ₹${o.amount}`);
-  assert((await post('/api/verify', { order: o.order })).status === 202, 'pending before payment');
-  assert((await post('/api/webhook', { text: 'hi' })).status === 401, 'webhook requires key');
-  const sms = `Money Received - INR ${o.amount} credited to HDFC Bank A/c XX1234 on 15-10-26 from VPA someone@okaxis (UPI Ref No 412345678901)`;
-  const w = await post('/api/webhook?key=hooksecret', { from: 'AD-HDFCBK', text: sms });
-  assert(w.matched && w.orderId === o.id, 'webhook SMS matched to order');
-  const v = await post('/api/verify', { order: o.order });
-  assert(v.status === 200 && v.token, 'polling now unlocks');
-  assert((await post('/api/webhook?key=hooksecret', { text: sms })).duplicate, 'duplicate SMS ignored');
-  for (const id of Object.keys(cfg.topics).filter((k) => !cfg.topics[k].free)) {
-    const r = await post('/api/reading', { topic: id, self, partner, question: 'എന്റെ വിവാഹം എപ്പോൾ നടക്കും?', token: v.token });
-    assert(r.status === 200 && r.sections.length >= 2, `${id} unlocked (${r.sections.length} sections)`);
-  }
+  // Sign-in
+  assert((await post('/api/user', { action: 'login', name: 'A', phone: '123' })).status === 400, 'rejects bad phone');
+  const login = await post('/api/user', { action: 'login', name: 'അജിത്', phone: '98765 43210' });
+  assert(login.status === 200 && login.user.phone === '919876543210' && login.session, 'phone sign-in (no OTP)');
+  const session = login.session;
+  assert((await post('/api/user', { session: 'x.y' })).status === 401, 'forged session rejected');
 
-  // 2) Customer pays a round amount; UTR entered matches the recorded credit
-  const s = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
-  await post('/api/webhook?key=hooksecret', 'Rs. 49.00 credited to a/c **1234 by VPA x@ybl UPI Ref No. 512345678902', true);
-  assert((await post('/api/verify', { order: s.order, utr: '000000000000' })).status === 202, 'unknown UTR stays pending');
-  const sv = await post('/api/verify', { order: s.order, utr: '512345678902' });
-  assert(sv.status === 200 && sv.token, 'UTR matched against webhook credit');
-  const s2 = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
-  assert((await post('/api/verify', { order: s2.order, utr: '512345678902' })).status === 409, 'UTR cannot be reused');
-  assert((await post('/api/reading', { topic: 'spouse_place', self, token: sv.token })).status === 402, 'single token limited to its topic');
+  // Free + paid gating
+  assert((await post('/api/reading', { topic: 'spouse_nature', self })).status === 401, 'readings need sign-in');
+  const free = await post('/api/reading', { topic: 'spouse_nature', self, session });
+  assert(free.status === 200 && free.sections.length >= 3 && !('disclaimer' in free), 'free reading, no disclaimer');
+  assert((await post('/api/reading', { topic: 'spouse_job', self, session })).status === 402, 'paid question locked');
 
-  // 2b) BharatPe app notification without UTR, matched by unique amount
-  const n = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
-  const note = { app: 'com.bharatpe.app', title: 'Payment Received', text: `₹${n.amount} received from Rahul via UPI` };
-  const nw = await post('/api/webhook?key=hooksecret&source=notification', note);
-  assert(nw.matched && nw.orderId === n.id, 'BharatPe notification (no UTR) matched by amount');
-  assert((await post('/api/webhook?key=hooksecret&source=notification', note)).duplicate, 'same notification twice is ignored');
-  assert((await post('/api/verify', { order: n.order })).token, 'notification-paid order unlocks');
+  // Manual payment request -> admin approves -> unlocked
+  assert((await post('/api/order', { session, topic: 'spouse_job' })).status === 400, 'payer name required');
+  const rq = await post('/api/order', { session, topic: 'spouse_job', payerName: 'AJITH T A' });
+  assert(rq.status === 200 && rq.request.status === 'pending' && rq.request.amount === 49, 'payment request created (pending)');
+  const again = await post('/api/order', { session, topic: 'spouse_job', payerName: 'AJITH TA' });
+  assert(again.request.id === rq.request.id, '"already paid – name only" updates the same request');
+  let dash = await admin('dashboard');
+  assert(dash.stats.pending === 1 && dash.requests[0].payerName === 'AJITH TA' && dash.users[0].phone === '919876543210', 'admin sees pending request and user');
+  await admin('approve', { id: rq.request.id });
+  const me = await post('/api/user', { session });
+  assert(me.unlocked.includes('spouse_job') && me.requests[0].status === 'approved', 'user status shows approval');
+  assert((await post('/api/reading', { topic: 'spouse_job', self, session })).status === 200, 'approved question opens');
+  assert((await post('/api/reading', { topic: 'spouse_place', self, session })).status === 402, 'other questions still locked');
 
-  // 2b2) "Notification to Webhook" app format (notificationTitle / notificationBody, amount only)
-  const nw2o = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
-  const nw2 = await post('/api/webhook?key=hooksecret&source=notification', { notificationPackageName: 'com.bharatpe.app', notificationTitle: 'Payment Received', notificationBody: `₹${nw2o.amount}`, notificationCategory: 'OTHER', notificationPostTime: '2026-10-16T09:48:00' });
-  assert(nw2.matched && nw2.orderId === nw2o.id, 'notificationTitle/notificationBody payload with bare "₹amount" matched');
-  const wa = await post('/api/webhook?key=hooksecret', { notificationPackageName: 'com.whatsapp', notificationTitle: '+91 99958 42503', notificationBody: '₹1.65' });
-  assert(wa.amount === '1.65', 'WhatsApp test payload is read (₹1.65)');
+  // Custom question
+  assert((await post('/api/order', { session, topic: 'custom', payerName: 'AJITH' })).status === 400, 'custom needs a question');
+  const cq = await post('/api/order', { session, topic: 'custom', payerName: 'AJITH', question: 'എന്റെ വിവാഹം എപ്പോൾ നടക്കും?' });
+  assert((await post('/api/reading', { topic: 'custom', self, session, requestId: cq.request.id })).status === 402, 'custom locked until approved');
+  await admin('approve', { id: cq.request.id });
+  const cr = await post('/api/reading', { topic: 'custom', self, session, requestId: cq.request.id });
+  assert(cr.status === 200 && cr.sections.length >= 2, 'approved custom question answered');
+  const other = (await post('/api/user', { action: 'login', name: 'Xavier', phone: '9000000001' })).session;
+  assert((await post('/api/reading', { topic: 'custom', self, session: other, requestId: cq.request.id })).status === 402, "another user can't read someone's custom answer");
+  dash = await admin('dashboard');
+  assert(dash.requests.some((r) => r.question === 'എന്റെ വിവാഹം എപ്പോൾ നടക്കും?'), 'admin sees custom questions');
 
-  // 2c) E-mail alert, form-encoded
-  const em = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
-  const form = new URLSearchParams({ subject: 'You have received a payment', 'body-plain': `Dear merchant, Rs. ${em.amount} has been credited. RRN: 612345678903` }).toString();
-  const ew = await fetch(base + '/api/webhook?key=hooksecret&source=email', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }).then((r) => r.json());
-  assert(ew.matched && ew.utr === '612345678903', 'e-mail (form data) matched with RRN');
+  // Reject
+  const rj = await post('/api/order', { session, topic: 'chovva_dosham', payerName: 'Nobody' });
+  await admin('reject', { id: rj.request.id });
+  assert((await post('/api/user', { session })).requests.find((r) => r.id === rj.request.id).status === 'rejected', 'rejected request visible to user');
 
-  // 2d) Structured API credit
-  const ap = await post('/api/order', { plan: 'full' });
-  assert((await post('/api/webhook?key=hooksecret&source=api', { amount: Number(ap.amount), utr: '712345678904' })).matched, 'structured {amount, utr} credit matched');
+  // Porutham after approval
+  const pr = await post('/api/order', { session, topic: 'porutham', payerName: 'AJITH' });
+  await admin('approve', { id: pr.request.id });
+  assert((await post('/api/reading', { topic: 'porutham', self, partner, session })).status === 200, 'porutham after approval');
 
-  // 2e) Debit messages are ignored
-  assert((await post('/api/webhook?key=hooksecret', { text: 'Rs.49.00 debited from a/c XX12 to VPA abc@ybl UPI Ref 812345678905' })).ignored, 'debit SMS ignored');
-
-  // 2f) Razorpay (signed)
-  process.env.RAZORPAY_WEBHOOK_SECRET = 'rzpsecret';
-  const rz = await post('/api/order', { plan: 'single', topic: 'chovva_dosham' });
-  const rzBody = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_1', amount: Math.round(Number(rz.amount) * 100), method: 'upi', vpa: 'a@b', acquirer_data: { rrn: '912345678906' } } } } });
-  const sig = require('crypto').createHmac('sha256', 'rzpsecret').update(rzBody).digest('hex');
-  const bad = await fetch(base + '/api/webhook?source=razorpay', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': 'nope' }, body: rzBody });
-  assert(bad.status === 401, 'razorpay bad signature rejected');
-  const good = await fetch(base + '/api/webhook?source=razorpay', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': sig }, body: rzBody }).then((r) => r.json());
-  assert(good.matched && good.orderId === rz.id, 'razorpay payment.captured matched');
-
-  // 3) Admin panel API
-  const dash = await post('/api/admin', { key: 'test-admin', action: 'dashboard' });
-  assert(dash.status === 200 && dash.orders.length >= 5 && dash.credits.length >= 5 && dash.webhooks.notification.includes('source=notification'), `admin dashboard (${dash.orders.length} orders, ₹${dash.stats.revenueTotal})`);
-  const mp = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
-  await post('/api/admin', { key: 'test-admin', action: 'mark_paid', orderId: mp.id });
-  assert((await post('/api/verify', { order: mp.order })).token, 'admin "mark paid" unlocks the customer');
-  const mc = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
-  assert((await post('/api/admin', { key: 'test-admin', action: 'add_credit', amount: mc.amount })).orderId === mc.id, 'manual credit matched');
-  const pr = await post('/api/admin', { key: 'test-admin', action: 'parse', text: 'Rs.49.37 received from xyz@okaxis. UTR 412345678901 - BharatPe' });
-  assert(pr.parsed && pr.parsed.paise === 4937 && pr.parsed.utr === '412345678901', 'parse tester');
-  const st = await post('/api/admin', { key: 'test-admin', action: 'settings', settings: { priceSingle: 59, upiId: 'new@ybl' } });
-  assert(st.settings.priceSingle === 59 && st.settings.upiId === 'new@ybl', 'settings saved');
+  // Settings: per-question price + QR upload
+  await admin('settings', { settings: { prices: { spouse_looks: 99 }, upiId: 'new@ybl' } });
   const cfg2 = await fetch(base + '/api/topics').then((r) => r.json());
-  assert(cfg2.plans.single.amount === 59 && cfg2.upiId === 'new@ybl', 'site uses new settings');
-  const o59 = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
-  assert(o59.amount.startsWith('59.') && o59.upi.includes('pa=new%40ybl'), 'new orders use new price + UPI');
+  assert(cfg2.topics.spouse_looks.price === 99 && cfg2.topics.spouse_job.price === 49 && cfg2.upiId === 'new@ybl', 'per-question price + UPI ID change');
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  assert((await admin('qr_upload', { dataUrl: 'data:text/html;base64,PGI+' })).status === 400, 'QR upload rejects non-images');
+  await admin('qr_upload', { dataUrl: png });
+  const q2 = await fetch(base + '/api/topics?qr=1');
+  assert(Buffer.from(await q2.arrayBuffer()).length === 70, 'uploaded QR is served');
+  await admin('qr_reset');
+  assert((await fetch(base + '/api/topics?qr=1').then((r) => r.arrayBuffer())).byteLength > 1000, 'QR reset to auto-generated');
 
-  // 3b) Telegram bot (Telegram API mocked)
-  const realFetch = globalThis.fetch;
-  const tgCalls = [];
-  globalThis.fetch = async (url, opts) => {
-    if (String(url).startsWith('https://api.telegram.org/')) {
-      const method = String(url).split('/').pop();
-      tgCalls.push({ method, params: JSON.parse(opts.body || '{}') });
-      const result = method === 'getMe' ? { id: 1, username: 'JeevithaPayBot', first_name: 'Pay' } : method === 'getWebhookInfo' ? { url: 'x', pending_update_count: 0 } : true;
-      return new Response(JSON.stringify({ ok: true, result }));
-    }
-    return realFetch(url, opts);
-  };
-  const conn = await post('/api/admin', { key: 'test-admin', action: 'tg_connect', token: '123456789:AAHabcdefghijklmnopqrstuvwxyz012345' });
-  const hook = tgCalls.find((c) => c.method === 'setWebhook');
-  assert(conn.connected && hook && hook.params.url.endsWith('/api/telegram') && hook.params.secret_token, 'telegram connect sets webhook');
-  const tgPost = (update, secret) => realFetch(base + '/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-telegram-bot-api-secret-token': secret }, body: JSON.stringify(update) });
-  assert((await tgPost({ update_id: 1 }, 'wrong')).status === 401, 'telegram webhook rejects bad secret');
-  const tor = await post('/api/order', { plan: 'single', topic: 'spouse_place' });
-  const upd = (id, text) => ({ update_id: id, channel_post: { message_id: id, chat: { id: -1001234567890, type: 'channel', title: 'Payments' }, text } });
-  await tgPost(upd(2, `BharatPe: ₹${tor.amount} received from Rahul`), hook.params.secret_token);
-  assert((await post('/api/verify', { order: tor.order })).status === 202, 'unapproved channel cannot confirm payments');
-  const stt = await post('/api/admin', { key: 'test-admin', action: 'tg_status' });
-  assert(stt.seen.some((c) => c.id === '-1001234567890'), 'unapproved channel listed for approval');
-  await post('/api/admin', { key: 'test-admin', action: 'tg_allow', chatId: '-1001234567890' });
-  await tgPost(upd(3, `BharatPe: ₹${tor.amount} received from Rahul`), hook.params.secret_token);
-  assert((await post('/api/verify', { order: tor.order })).token, 'approved Telegram channel post unlocks order');
-  globalThis.fetch = realFetch;
-
-  // 4) Owner unlock code
-  const code = await post('/api/admin', { key: 'test-admin', action: 'code', orderId: s2.id });
-  assert(code.status === 200 && (await post('/api/verify', { order: s2.order, code: code.code })).token, 'admin unlock code works');
-  assert((await post('/api/admin', { key: 'nope', orderId: s2.id })).status === 401, 'admin requires key');
+  // Notification feed
+  const w = await post('/api/webhook?key=hooksecret', { notificationPackageName: 'com.bharatpe.app', notificationTitle: 'Payment received', notificationBody: '₹49 from AJITH' });
+  assert(w.recorded && w.amount === '49', 'notification recorded in feed');
+  assert((await admin('dashboard')).payments.length === 1, 'admin sees received payment');
+  assert((await post('/api/webhook?key=nope', { text: 'x' })).status === 401, 'webhook needs key');
+  assert((await admin('dashboard', { key: 'nope' })).status === 401, 'admin needs key');
   console.log('all passed');
   process.exit(0);
 })();

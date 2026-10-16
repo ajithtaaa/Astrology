@@ -264,3 +264,20 @@ details p { margin: 0 0 14px; color: var(--muted); }
   .consult-grid { display: block; }
   .chat { max-height: none; overflow: visible; }
 }
+
+/* manual payments, sign-in, pricing list */
+.tagline { margin: -10px 0 24px; color: var(--gold); font-weight: 600; font-size: 14.5px; }
+.who-chip { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.who-chip span { font-weight: 600; color: var(--deep); }
+.section-sub { text-align: center; color: var(--muted); margin: -14px 0 24px; }
+.price-list { max-width: 640px; margin: 0 auto; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.price-list div { display: flex; justify-content: space-between; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+.price-list div:last-child { border: 0; }
+.price-list b { color: var(--maroon); font: 700 17px var(--serif); white-space: nowrap; }
+.pay-steps { display: grid; gap: 16px; }
+.pay-step { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--cream); }
+.pay-step h4 { font-size: 15px; margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
+.pay-step h4 span { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--maroon); color: #fff; font: 700 13px var(--sans); }
+.qr-img { display: block; width: 220px; max-width: 100%; margin: 6px auto 10px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+.qr-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+@media (max-width: 640px) { .who-chip span { max-width: 90px; overflow: hidden; text-overflow: ellipsis; } .who-chip + .btn { display: none; } }

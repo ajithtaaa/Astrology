@@ -1,18 +1,20 @@
-const QRCode = require('qrcode');
-const { createOrder } = require('../lib/pay');
-const { TOPICS } = require('../lib/reading');
+const pay = require('../lib/pay');
+const accounts = require('../lib/accounts');
 const { send, body } = require('./_util');
 
+// Customer says "I paid": records a payment request for the admin to verify.
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
   try {
-    const { plan, topic } = await body(req);
-    if (plan === 'single' && (!TOPICS[topic] || TOPICS[topic].free)) return send(res, 400, { error: 'invalid topic' });
-    const order = await createOrder(plan, topic);
-    const qr = await QRCode.toString(order.upi, { type: 'svg', margin: 1, width: 240, color: { dark: '#2b1b17', light: '#ffffff' } });
-    send(res, 200, { ...order, qr });
+    const { session, topic, payerName, question } = await body(req);
+    const phone = pay.phoneFromSession(session);
+    if (!phone) return send(res, 401, { error: 'signin_required' });
+    if (!String(payerName || '').trim()) return send(res, 400, { error: 'payer_name_required' });
+    if (topic === 'custom' && String(question || '').trim().length < 4) return send(res, 400, { error: 'question_required' });
+    const r = await accounts.createRequest(phone, { topic, payerName, question });
+    console.log(`[request] ${r.id} ${phone} ${topic} ₹${r.amount} payer="${r.payerName}"`);
+    send(res, 200, { request: { id: r.id, topic: r.topic, status: r.status, amount: r.amount } });
   } catch (e) {
-    console.error('[order]', e);
-    send(res, e.message === 'busy' ? 503 : 400, { error: e.message });
+    send(res, 400, { error: e.message });
   }
 };

@@ -1,7 +1,7 @@
 const { TOPICS, computeChart, chartSummary, localReading } = require('../lib/reading');
-const { checkToken } = require('../lib/pay');
+const { phoneFromSession } = require('../lib/pay');
+const accounts = require('../lib/accounts');
 const soma = require('../lib/soma');
-const { DISCLAIMER } = require('../lib/texts');
 const { send, body } = require('./_util');
 
 const SOMA_QUESTIONS = {
@@ -33,13 +33,17 @@ module.exports = async (req, res) => {
   } catch {
     return send(res, 400, { error: 'bad json' });
   }
-  const { topic, self, partner, question, token } = input;
+  const { topic, self, partner, session, requestId } = input;
+  let { question } = input;
   const meta = TOPICS[topic];
   if (!meta) return send(res, 400, { error: 'unknown topic' });
   if (!validBirth(self)) return send(res, 400, { error: 'bad_birth' });
   if (topic === 'porutham' && !validBirth(partner)) return send(res, 400, { error: 'bad_partner' });
-  if (topic === 'custom' && !(question && String(question).trim().length > 3)) return send(res, 400, { error: 'no_question' });
-  if (!meta.free && !checkToken(token, topic)) return send(res, 402, { error: 'payment_required' });
+  const phone = phoneFromSession(session);
+  if (!phone) return send(res, 401, { error: 'signin_required' });
+  const access = await accounts.canRead(phone, topic, requestId);
+  if (!access.ok) return send(res, 402, { error: 'payment_required' });
+  if (topic === 'custom') question = access.question;
 
   try {
     const me = person(self);
@@ -73,7 +77,6 @@ module.exports = async (req, res) => {
       summary: chartSummary(me.chart),
       name: me.name || '',
       sections,
-      disclaimer: DISCLAIMER,
       source,
     });
   } catch (e) {
