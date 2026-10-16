@@ -78,6 +78,9 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   const otherHist = await post('/api/user', { session: other, action: 'history' });
   assert(otherHist.history.length === 0, "other users don't see someone else's history");
 
+  const d2 = await admin('dashboard');
+  assert(d2.stats.users === 2 && d2.stats.newToday === 2 && d2.stats.activeToday === 2 && d2.stats.visits >= 3 && d2.users.find((u) => u.phone === '919876543210').visits >= 2, `admin user counts (users ${d2.stats.users}, visits ${d2.stats.visits})`);
+
   // Settings: per-question price + QR upload
   await admin('settings', { settings: { prices: { spouse_looks: 99 }, upiId: 'new@ybl' } });
   const cfg2 = await fetch(base + '/api/topics').then((r) => r.json());

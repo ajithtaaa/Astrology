@@ -21,6 +21,7 @@ module.exports = async (req, res) => {
     if (!u) return send(res, 401, { error: 'signin_required' });
     if (input.action === 'profile') return send(res, 200, { profile: await accounts.saveProfile(phone, input.profile || {}) });
     if (input.action === 'history') return send(res, 200, { history: await accounts.history(phone) });
+    await accounts.touch(u).catch(() => {});
     const requests = (await accounts.userRequests(phone)).map(({ id, topic, status, amount, payerName, question, created, decidedAt }) => ({ id, topic, status, amount, payerName, question, created, decidedAt }));
     send(res, 200, { user: { phone, name: u.name, created: u.created }, profile: u.profile || null, unlocked: Object.keys(u.unlocked || {}), requests });
   } catch (e) {

@@ -13,6 +13,22 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+
+  <div class="gate" id="gate" hidden>
+    <div class="gate-card">
+      <svg class="brand-mark gate-mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="24" cy="34" r="14"/><circle cx="40" cy="34" r="14"/><path d="M32 6l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg>
+      <h1>ജീവിതപങ്കാളി ജ്യോതിഷം</h1>
+      <p class="gate-sub">നിങ്ങളുടെ ഭാവി ജീവിതപങ്കാളി ആരായിരിക്കും? തുടങ്ങാൻ പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>
+          <form id="signin-form" class="form" novalidate>
+            
+            <label class="field"><span>പേര്</span><input name="uname" required maxlength="40" autocomplete="name" placeholder="ഉദാ: അനു"></label>
+            <label class="field"><span>ഫോൺ നമ്പർ</span><input name="uphone" required inputmode="tel" autocomplete="tel" placeholder="ഉദാ: 9876543210"></label>
+            <p class="form-error" hidden></p>
+            <button class="btn btn-primary btn-block" type="submit">പ്രവേശിക്കുക</button>
+          </form>
+      <p class="fine gate-fine">വേദജ്യോതിഷ പ്രകാരം · കേരളത്തിലെ 7 ജ്യോതിഷികളുടെ പ്രവചനങ്ങളോടെ നിർമ്മിച്ചത്</p>
+    </div>
+  </div>
   <header class="site-header">
     <div class="wrap header-inner">
       <a class="brand" href="#top" aria-label="ജീവിതപങ്കാളി ജ്യോതിഷം">
@@ -70,13 +86,6 @@
             <h2>നിങ്ങളുടെ ജാതകം</h2>
             <button class="link" id="edit-profile" type="button" hidden>മാറ്റുക</button>
           </div>
-          <form id="signin-form" class="form" novalidate>
-            <p class="fine" style="font-size:14px">തുടങ്ങാൻ നിങ്ങളുടെ പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>
-            <label class="field"><span>പേര്</span><input name="uname" required maxlength="40" autocomplete="name" placeholder="ഉദാ: അനു"></label>
-            <label class="field"><span>ഫോൺ നമ്പർ</span><input name="uphone" required inputmode="tel" autocomplete="tel" placeholder="ഉദാ: 9876543210"></label>
-            <p class="form-error" hidden></p>
-            <button class="btn btn-primary btn-block" type="submit">പ്രവേശിക്കുക</button>
-          </form>
           <form id="birth-form" class="form" autocomplete="off" novalidate hidden>
             <label class="field">
               <span>പേര്</span>

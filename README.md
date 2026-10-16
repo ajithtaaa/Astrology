@@ -25,7 +25,7 @@ configured or fails, the built-in engine answers on its own, so the site keeps w
 - Paid: love or arranged marriage, spouse's job, spouse's place, marriage timing, appearance, ചൊവ്വാദോഷം,
   porutham, and the user's own question.
 
-**Sign-in.** Users sign in with their name and phone number. There's no OTP. The session is HMAC-signed with
+**Sign-in.** The site opens on a full-screen login page; users must sign in with their name and phone number before using anything. There's no OTP. The session is HMAC-signed with
 `PAYMENT_SECRET`. Birth details and every answer are saved against the phone number, so signing in again with
 the same number on any device brings back the chart and old answers. **My Account** shows unlocked questions,
 own questions, payment requests with their status, and past answers.

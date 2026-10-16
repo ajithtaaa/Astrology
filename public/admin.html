@@ -83,7 +83,7 @@
         <div class="card">
           <h2>Users</h2>
           <input id="user-search" placeholder="Search name or phone" style="max-width:320px;margin-bottom:10px">
-          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Last seen</th><th>Unlocked questions</th><th>Custom questions</th></tr></thead><tbody id="users"></tbody></table></div>
+          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Phone</th><th>Joined</th><th>Last seen</th><th>Visits</th><th>Unlocked questions</th><th>Custom questions</th></tr></thead><tbody id="users"></tbody></table></div>
         </div>
       </section>
 
@@ -184,10 +184,10 @@
       const custom = {};
       data.requests.filter((r) => r.topic === 'custom').forEach((r) => { (custom[r.phone] = custom[r.phone] || []).push(r); });
       $('#users').innerHTML = data.users.filter((u) => !q || (u.name || '').toLowerCase().includes(q) || u.phone.includes(q.replace(/\D/g, '') || '~')).map((u) => `<tr>
-        <td><b>${esc(u.name)}</b></td><td><a href="tel:+${esc(u.phone)}">${esc(phoneFmt(u.phone))}</a></td><td>${fmt(u.created)}</td><td>${fmt(u.lastSeen)}</td>
+        <td><b>${esc(u.name)}</b></td><td><a href="tel:+${esc(u.phone)}">${esc(phoneFmt(u.phone))}</a></td><td>${fmt(u.created)}</td><td>${fmt(u.lastSeen)}</td><td>${esc(u.visits)}${u.hasChart ? '' : '<br><small class="muted">no chart yet</small>'}</td>
         <td>${u.unlocked.map((t) => `<div>${esc(title(t))}</div>`).join('') || '<span class="muted">–</span>'}</td>
         <td>${(custom[u.phone] || []).map((r) => `<div class="q">${esc(r.question)}<br><span class="pill ${r.status}">${r.status}</span> <small class="muted">${fmt(r.created)}</small></div>`).join('') || '<span class="muted">–</span>'}</td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted">No users yet.</td></tr>';
+      </tr>`).join('') || '<tr><td colspan="7" class="muted">No users yet.</td></tr>';
     }
     $('#user-search').addEventListener('input', renderUsers);
 
@@ -196,7 +196,7 @@
       data = d; topics = cfg.topics;
       $('#login').hidden = true; $('#app').hidden = false;
       const s = data.stats;
-      $('#stats').innerHTML = [['Pending requests', s.pending], ['Revenue today', '₹' + s.revenueToday], ['Total revenue', '₹' + s.revenueTotal], ['Users', s.users]]
+      $('#stats').innerHTML = [['Total users', s.users], ['New users today', s.newToday], ['Active today', s.activeToday], ['Active (7 days)', s.active7d], ['Total visits', s.visits], ['Pending requests', s.pending], ['Revenue today', '₹' + s.revenueToday], ['Total revenue', '₹' + s.revenueTotal]]
         .map(([l, v]) => `<div class="stat"><small>${l}</small><b>${esc(v)}</b></div>`).join('');
       $('#pending-count').hidden = !s.pending; $('#pending-count').textContent = s.pending;
       $('#storage-note').hidden = data.persistent;

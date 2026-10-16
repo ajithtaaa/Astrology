@@ -208,7 +208,7 @@
 
   // ------------------------------------------------------------ topics & readings
   function pickTopic(topic) {
-    if (!account) { say('<p>ആദ്യം പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>'); signinForm.scrollIntoView({ behavior: 'smooth' }); return; }
+    if (!account) { $('#gate').hidden = false; document.body.classList.add('locked'); return; }
     if (!profile) { say('<p>ആദ്യം ഇടതുവശത്ത് ജനനവിവരങ്ങൾ നൽകുക.</p>'); form.scrollIntoView({ behavior: 'smooth' }); return; }
     const t = config.topics[topic];
     user(t.title);
@@ -382,7 +382,8 @@
   // ------------------------------------------------------------ sign in
   const signinForm = $('#signin-form');
   function showSignedIn() {
-    signinForm.hidden = true;
+    $('#gate').hidden = true;
+    document.body.classList.remove('locked');
     $('#who-chip').hidden = false;
     $('#who-name').textContent = account.name;
   }
@@ -462,7 +463,9 @@
     if (r && r.topics) config = r;
     $('#price-list').innerHTML = Object.values(config.topics).map((t) => `<div><span>${esc(t.title)}</span><b>${t.free ? 'സൗജന്യം' : '₹' + t.price}</b></div>`).join('');
     if (!account) {
-      signinForm.hidden = false;
+      $('#gate').hidden = false;
+      document.body.classList.add('locked');
+      setTimeout(() => signinForm.uname.focus(), 50);
       say('<p>നമസ്കാരം! 🙏</p><p>ജാതകം നോക്കി നിങ്ങളുടെ ഭാവി ജീവിതപങ്കാളിയെക്കുറിച്ച് – സ്വഭാവം, ജോലി, നാട്, വിവാഹസമയം, പ്രണയവിവാഹമോ എന്നതൊക്കെ – വിശദമായി പറഞ്ഞുതരാം.</p><p>തുടങ്ങാൻ നിങ്ങളുടെ പേരും ഫോൺ നമ്പറും നൽകി പ്രവേശിക്കുക.</p>');
       return;
     }
