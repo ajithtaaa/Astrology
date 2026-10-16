@@ -121,6 +121,11 @@
             <label class="field"><span>UPI ID (used for the auto-generated QR and the "open UPI app" button)</span><input name="upiId" required></label>
             <label class="field"><span>Payee name</span><input name="payee" required maxlength="60"></label>
             <label class="field"><span>WhatsApp support number (with country code, e.g. 919876543210)</span><input name="whatsapp" inputmode="numeric"></label>
+            <h2 style="margin-top:8px">"Open in UPI app" button</h2>
+            <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="upiButton" style="width:auto"> Show the "UPI ആപ്പിൽ തുറക്കുക" button to customers on phones</label>
+            <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="upiAmount" style="width:auto"> Fill in the amount automatically <span class="muted">(leave off if payments get "declined / not trusted")</span></label>
+            <label class="field"><span>Official UPI link from your QR <span class="muted">(filled automatically when you upload your BharatPe QR; starts with upi://pay?)</span></span><input name="upiLink" placeholder="upi://pay?pa=...&pn=...&mc=..."></label>
+            <p class="muted" id="link-status"></p>
             <button class="btn btn-primary btn-sm" type="submit" style="justify-self:start">Save</button>
           </form>
         </div>
@@ -203,7 +208,9 @@
       $('#qr-prev').src = qrUrl; $('#qr-download').href = qrUrl + '&download=1';
       $('#qr-kind').textContent = st.qrUpdatedAt ? 'Showing the QR you uploaded (or auto-generated if you reset it).' : `Auto-generated from UPI ID ${st.upiId}.`;
       $('#prices-form').innerHTML = Object.entries(topics).filter(([, t]) => !t.free).map(([id, t]) => `<label>${esc(t.title)}<input type="number" min="1" name="${id}" value="${esc(st.prices[id])}"></label>`).join('');
-      const f = $('#settings-form'); for (const k of ['upiId', 'payee', 'whatsapp']) f[k].value = st[k] ?? '';
+      const f = $('#settings-form'); for (const k of ['upiId', 'payee', 'whatsapp', 'upiLink']) f[k].value = st[k] ?? '';
+      f.upiButton.checked = st.upiButton !== false; f.upiAmount.checked = Boolean(st.upiAmount);
+      $('#link-status').textContent = st.upiLink ? '✓ Using the official link from your QR – UPI apps trust this.' : 'No official link yet – the button uses a link built from the UPI ID, which some apps decline. Upload your BharatPe QR above to fix this.';
     }
 
     document.addEventListener('click', async (e) => {
@@ -220,13 +227,14 @@
     });
     $('#settings-form').addEventListener('submit', async (e) => {
       e.preventDefault(); const f = e.target;
-      try { await call('settings', { settings: { upiId: f.upiId.value, payee: f.payee.value, whatsapp: f.whatsapp.value } }); toast('Saved'); load(); } catch (err) { toast(err.message); }
+      if (f.upiLink.value.trim() && !/^upi:\/\/pay\?/i.test(f.upiLink.value.trim())) return toast('The UPI link must start with upi://pay?');
+      try { await call('settings', { settings: { upiId: f.upiId.value, payee: f.payee.value, whatsapp: f.whatsapp.value, upiButton: f.upiButton.checked, upiAmount: f.upiAmount.checked, upiLink: f.upiLink.value } }); toast('Saved'); load(); } catch (err) { toast(err.message); }
     });
     $('#qr-file').addEventListener('change', (e) => {
       const file = e.target.files[0]; if (!file) return;
       if (file.size > 2 * 1024 * 1024) return toast('Image is too large (max 2 MB)');
       const rd = new FileReader();
-      rd.onload = async () => { try { await call('qr_upload', { dataUrl: rd.result }); toast('QR updated'); load(); } catch (err) { toast(err.message); } };
+      rd.onload = async () => { try { const r = await call('qr_upload', { dataUrl: rd.result }); toast(r.decoded ? 'QR updated – official UPI link found and used for the app button' : 'QR updated (could not read a UPI link from it – paste it below if the app button fails)'); load(); } catch (err) { toast(err.message); } };
       rd.readAsDataURL(file); e.target.value = '';
     });
     $('#qr-reset').addEventListener('click', async () => { if (confirm('Switch back to the QR generated from your UPI ID?')) { await call('qr_reset'); toast('Using auto-generated QR'); load(); } });

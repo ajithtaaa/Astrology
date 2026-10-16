@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
       const m = custom.dataUrl.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
       type = m[1]; buf = Buffer.from(m[2], 'base64');
     } else {
-      const upi = `upi://pay?pa=${encodeURIComponent(s.upiId)}&pn=${encodeURIComponent(s.payee)}&cu=INR`;
+      const upi = s.upiLink || `upi://pay?pa=${encodeURIComponent(s.upiId)}&pn=${encodeURIComponent(s.payee)}&cu=INR`;
       buf = await QRCode.toBuffer(upi, { type: 'png', width: 640, margin: 2 }); type = 'image/png';
     }
     res.statusCode = 200;
@@ -26,5 +26,5 @@ module.exports = async (req, res) => {
     return res.end(buf);
   }
   const topics = Object.fromEntries(Object.entries(TOPICS).map(([id, t]) => [id, { ...t, price: t.free ? 0 : s.prices[id] }]));
-  send(res, 200, { topics, upiId: s.upiId, payee: s.payee, whatsapp: s.whatsapp || null, qrVersion: s.qrUpdatedAt || 0, soma: soma.enabled() });
+  send(res, 200, { topics, upiId: s.upiId, payee: s.payee, upiButton: s.upiButton !== false, upiAmount: Boolean(s.upiAmount), upiLink: s.upiLink || '', whatsapp: s.whatsapp || null, qrVersion: s.qrUpdatedAt || 0, soma: soma.enabled() });
 };

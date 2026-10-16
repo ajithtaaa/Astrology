@@ -77,6 +77,17 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   await admin('qr_upload', { dataUrl: png });
   const q2 = await fetch(base + '/api/topics?qr=1');
   assert(Buffer.from(await q2.arrayBuffer()).length === 70, 'uploaded QR is served');
+  // Official link is read from an uploaded QR image and used for the "open UPI app" button
+  const official = 'upi://pay?pa=BHARATPE2R0F0X6K4D61686@unitype&pn=BharatPe%20Merchant&cu=INR&mc=5411&mode=02';
+  const qrPng = await require('qrcode').toDataURL(official, { width: 400 });
+  const up = await admin('qr_upload', { dataUrl: qrPng });
+  assert(up.decoded === official, 'official UPI link decoded from uploaded PNG QR');
+  const cfg3 = await fetch(base + '/api/topics').then((r) => r.json());
+  assert(cfg3.upiLink === official && cfg3.upiButton === true && cfg3.upiAmount === false, 'site uses official link, button on, amount off by default');
+  await admin('settings', { settings: { upiButton: false, upiAmount: true } });
+  const cfg4 = await fetch(base + '/api/topics').then((r) => r.json());
+  assert(cfg4.upiButton === false && cfg4.upiAmount === true, 'admin can toggle the UPI app button and amount');
+  assert((await admin('settings', { settings: { upiLink: 'https://evil.example' } })).settings.upiLink === official, 'non-UPI links are rejected');
   await admin('qr_reset');
   assert((await fetch(base + '/api/topics?qr=1').then((r) => r.arrayBuffer())).byteLength > 1000, 'QR reset to auto-generated');
 

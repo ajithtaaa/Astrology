@@ -2,6 +2,7 @@ const pay = require('../lib/pay');
 const store = require('../lib/store');
 const accounts = require('../lib/accounts');
 const { getSettings, saveSettings } = require('../lib/settings');
+const { decodeQr } = require('../lib/qrdecode');
 const { send, body } = require('./_util');
 
 // Owner admin panel API. Every call needs the ADMIN_KEY.
@@ -49,11 +50,16 @@ module.exports = async (req, res) => {
         if (!m) return send(res, 400, { error: 'Upload a PNG, JPG, WEBP or SVG image' });
         if (m[3].length > 2.8e6) return send(res, 400, { error: 'Image is too large (max 2 MB)' });
         await store.set('config/qr', { dataUrl: input.dataUrl, at: Date.now() });
-        return send(res, 200, { ok: true, settings: await saveSettings({ qrUpdatedAt: Date.now() }) });
+        // Use the exact link inside the official QR for the "open UPI app" button: apps trust it.
+        const text = decodeQr(input.dataUrl);
+        const link = text && /^upi:\/\/pay\?/i.test(text) ? text : '';
+        const patch = { qrUpdatedAt: Date.now() };
+        if (link) patch.upiLink = link;
+        return send(res, 200, { ok: true, decoded: link || null, settings: await saveSettings(patch) });
       }
       case 'qr_reset':
         await store.set('config/qr', { dataUrl: '', at: Date.now() });
-        return send(res, 200, { ok: true, settings: await saveSettings({ qrUpdatedAt: Date.now() }) });
+        return send(res, 200, { ok: true, settings: await saveSettings({ qrUpdatedAt: Date.now(), upiLink: '' }) });
       default:
         return send(res, 400, { error: 'unknown action' });
     }

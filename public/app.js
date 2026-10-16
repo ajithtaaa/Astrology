@@ -287,7 +287,12 @@
   function openPay(topic, question) {
     const t = config.topics[topic];
     const qrSrc = `/api/topics?qr=1&v=${config.qrVersion}`;
-    const upiLink = config.upiId ? `upi://pay?pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payee || '')}&am=${t.price}&cu=INR` : '';
+    // Prefer the exact link from the official QR (apps trust it); only add the amount if the admin enabled it.
+    let upiLink = '';
+    if (config.upiButton && (config.upiLink || config.upiId)) {
+      upiLink = config.upiLink || `upi://pay?pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payee || '')}&cu=INR`;
+      if (config.upiAmount) upiLink = upiLink.replace(/([?&])am=[^&]*&?/i, '$1').replace(/[?&]$/, '') + `&am=${t.price}`;
+    }
     payBody.innerHTML = `
       <div class="dlg-head"><div><h3 id="pay-title">${esc(t.title)}</h3><p>ഈ ചോദ്യത്തിനുള്ള തുക: <b>₹${t.price}</b></p></div><button class="x" type="button" aria-label="അടയ്ക്കുക">×</button></div>
       <div class="pay-steps">
@@ -298,6 +303,7 @@
             <a class="btn btn-ghost btn-sm" href="${qrSrc}&download=1" download>QR ഡൗൺലോഡ് ചെയ്യുക</a>
             ${isMobile && upiLink ? `<a class="btn btn-primary btn-sm" href="${esc(upiLink)}">UPI ആപ്പിൽ തുറക്കുക</a>` : ''}
           </div>
+          ${isMobile && upiLink && !config.upiAmount ? `<p class="fine" style="text-align:center;margin-top:6px">ആപ്പ് തുറക്കുമ്പോൾ തുകയായി <b>₹${t.price}</b> നൽകുക.</p>` : ''}
           ${config.upiId ? `<p class="fine" style="text-align:center;margin-top:8px">UPI ഐഡി: <b>${esc(config.upiId)}</b></p>` : ''}
         </div>
         <form class="pay-step" id="payer-form">
