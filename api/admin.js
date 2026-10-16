@@ -1,6 +1,7 @@
 const pay = require('../lib/pay');
 const store = require('../lib/store');
 const { getSettings, saveSettings } = require('../lib/settings');
+const telegram = require('../lib/telegram');
 const { send, body } = require('./_util');
 
 // Owner admin panel API. Every call needs the ADMIN_KEY.
@@ -65,6 +66,19 @@ module.exports = async (req, res) => {
       case 'parse': {
         return send(res, 200, { parsed: pay.parseCredit(String(input.text || '')) });
       }
+      case 'tg_status':
+        return send(res, 200, await telegram.status());
+      case 'tg_connect': {
+        const host = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+        await telegram.connect(input.token, host);
+        return send(res, 200, await telegram.status());
+      }
+      case 'tg_disconnect':
+        await telegram.disconnect();
+        return send(res, 200, await telegram.status());
+      case 'tg_allow':
+        await telegram.setAllowed(input.chatId, input.allow !== false);
+        return send(res, 200, await telegram.status());
       case 'settings': {
         const s = await saveSettings(input.settings || {});
         return send(res, 200, { ok: true, settings: s });
@@ -74,6 +88,6 @@ module.exports = async (req, res) => {
     }
   } catch (e) {
     console.error('[admin]', e);
-    send(res, 500, { error: 'server_error' });
+    send(res, String(input.action || '').startsWith('tg_') ? 400 : 500, { error: String(input.action || '').startsWith('tg_') ? e.message : 'server_error' });
   }
 };

@@ -34,6 +34,7 @@ configured or fails, the built-in engine answers on its own, so the site keeps w
    - **App notification**: BharatPe / PhonePe Business / Paytm alerts, forwarded by MacroDroid, Tasker or Notification Forwarder (`source=notification`).
    - **SMS**: bank or BharatPe SMS from an Android SMS forwarder or an iPhone Shortcuts automation (`source=sms`).
    - **E-mail**: payment alert e-mails, through the Gmail Apps Script shown in the admin panel, or Mailgun / CloudMailin / Zapier / Make (`source=email`).
+   - **Telegram**: a bot connected in the admin panel reads payment alerts posted in approved chats or channels (`/api/telegram`, verified with Telegram's secret-token header).
    - **Structured API**: `{"amount": 49.37, "utr": "…"}` from any system (`source=api`).
    - **Razorpay**: `payment.captured` webhooks, signature-verified with `RAZORPAY_WEBHOOK_SECRET` (`source=razorpay`).
 

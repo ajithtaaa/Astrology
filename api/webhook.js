@@ -28,12 +28,19 @@ function parseBody(raw, contentType) {
   return null;
 }
 
+// Collect the human-readable text from any notification/SMS/e-mail payload, whatever the field names
+// (e.g. title/text, notificationTitle/notificationBody, subject/body-plain, message, bigText…).
 function textOf(d) {
-  const fields = ['title', 'subject', 'text', 'bigtext', 'big_text', 'message', 'msg', 'body', 'sms', 'content',
-    'body-plain', 'stripped-text', 'plain', 'html', 'notification', 'description'];
-  const parts = fields.map((f) => d[f]).filter((v) => typeof v === 'string' && v.trim());
-  return parts.length ? parts.join(' \n ') : JSON.stringify(d);
+  const parts = [];
+  for (const [k, v] of Object.entries(d)) {
+    if (typeof v === 'string' && v.trim() && /title|text|body|message|msg|content|subject|sms|ticker|plain|html|notification|desc/i.test(k)
+      && !/package|category|time|date|id$|icon|channel/i.test(k)) parts.push(v);
+    else if (v && typeof v === 'object' && !Array.isArray(v)) parts.push(textOf(v));
+  }
+  return parts.filter(Boolean).join(' \n ');
 }
+
+const appOf = (d) => (d && (d.app || d.package || d.packageName || d.notificationPackageName || d.appName || d.application)) || '';
 
 function razorpay(raw, req) {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -67,16 +74,17 @@ module.exports = async (req, res) => {
 
     const data = parseBody(raw, req.headers['content-type']);
     const filter = process.env.SMS_SENDER_FILTER;
-    const from = data && (data.from || data.sender || data.app || data.package || data.packageName || '');
+    const from = data ? (data.from || data.sender || appOf(data)) : '';
     if (filter && from && !new RegExp(filter, 'i').test(from)) return send(res, 200, { ok: true, ignored: true, reason: 'sender' });
 
     if (data && (data.amount != null) && (data.utr || data.rrn || data.reference || data.txnId)) {
       const utr = String(data.utr || data.rrn || data.reference || data.txnId).replace(/\D/g, '');
       credit = { paise: Math.round(Number(data.amount) * 100), utr: utr.length === 12 ? utr : '', raw: JSON.stringify(data).slice(0, 300), source: source || 'api' };
     } else {
-      const text = data ? textOf(data) : raw;
-      const parsed = pay.parseCredit(text);
-      if (parsed) credit = { ...parsed, raw: parsed.text, source: source || (data && (data.app || data.package) ? 'notification' : 'sms') };
+      const text = (data && textOf(data)) || raw;
+      const isNotification = source === 'notification' || Boolean(appOf(data));
+      const parsed = pay.parseCredit(text, { loose: isNotification });
+      if (parsed) credit = { ...parsed, raw: [appOf(data), parsed.text].filter(Boolean).join(': '), source: source || (isNotification ? 'notification' : 'sms') };
     }
   }
 

@@ -54,6 +54,13 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   assert((await post('/api/webhook?key=hooksecret&source=notification', note)).duplicate, 'same notification twice is ignored');
   assert((await post('/api/verify', { order: n.order })).token, 'notification-paid order unlocks');
 
+  // 2b2) "Notification to Webhook" app format (notificationTitle / notificationBody, amount only)
+  const nw2o = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
+  const nw2 = await post('/api/webhook?key=hooksecret&source=notification', { notificationPackageName: 'com.bharatpe.app', notificationTitle: 'Payment Received', notificationBody: `₹${nw2o.amount}`, notificationCategory: 'OTHER', notificationPostTime: '2026-10-16T09:48:00' });
+  assert(nw2.matched && nw2.orderId === nw2o.id, 'notificationTitle/notificationBody payload with bare "₹amount" matched');
+  const wa = await post('/api/webhook?key=hooksecret', { notificationPackageName: 'com.whatsapp', notificationTitle: '+91 99958 42503', notificationBody: '₹1.65' });
+  assert(wa.amount === '1.65', 'WhatsApp test payload is read (₹1.65)');
+
   // 2c) E-mail alert, form-encoded
   const em = await post('/api/order', { plan: 'single', topic: 'spouse_looks' });
   const form = new URLSearchParams({ subject: 'You have received a payment', 'body-plain': `Dear merchant, Rs. ${em.amount} has been credited. RRN: 612345678903` }).toString();
@@ -93,6 +100,34 @@ const assert = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1);
   assert(cfg2.plans.single.amount === 59 && cfg2.upiId === 'new@ybl', 'site uses new settings');
   const o59 = await post('/api/order', { plan: 'single', topic: 'spouse_job' });
   assert(o59.amount.startsWith('59.') && o59.upi.includes('pa=new%40ybl'), 'new orders use new price + UPI');
+
+  // 3b) Telegram bot (Telegram API mocked)
+  const realFetch = globalThis.fetch;
+  const tgCalls = [];
+  globalThis.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.telegram.org/')) {
+      const method = String(url).split('/').pop();
+      tgCalls.push({ method, params: JSON.parse(opts.body || '{}') });
+      const result = method === 'getMe' ? { id: 1, username: 'JeevithaPayBot', first_name: 'Pay' } : method === 'getWebhookInfo' ? { url: 'x', pending_update_count: 0 } : true;
+      return new Response(JSON.stringify({ ok: true, result }));
+    }
+    return realFetch(url, opts);
+  };
+  const conn = await post('/api/admin', { key: 'test-admin', action: 'tg_connect', token: '123456789:AAHabcdefghijklmnopqrstuvwxyz012345' });
+  const hook = tgCalls.find((c) => c.method === 'setWebhook');
+  assert(conn.connected && hook && hook.params.url.endsWith('/api/telegram') && hook.params.secret_token, 'telegram connect sets webhook');
+  const tgPost = (update, secret) => realFetch(base + '/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-telegram-bot-api-secret-token': secret }, body: JSON.stringify(update) });
+  assert((await tgPost({ update_id: 1 }, 'wrong')).status === 401, 'telegram webhook rejects bad secret');
+  const tor = await post('/api/order', { plan: 'single', topic: 'spouse_place' });
+  const upd = (id, text) => ({ update_id: id, channel_post: { message_id: id, chat: { id: -1001234567890, type: 'channel', title: 'Payments' }, text } });
+  await tgPost(upd(2, `BharatPe: ₹${tor.amount} received from Rahul`), hook.params.secret_token);
+  assert((await post('/api/verify', { order: tor.order })).status === 202, 'unapproved channel cannot confirm payments');
+  const stt = await post('/api/admin', { key: 'test-admin', action: 'tg_status' });
+  assert(stt.seen.some((c) => c.id === '-1001234567890'), 'unapproved channel listed for approval');
+  await post('/api/admin', { key: 'test-admin', action: 'tg_allow', chatId: '-1001234567890' });
+  await tgPost(upd(3, `BharatPe: ₹${tor.amount} received from Rahul`), hook.params.secret_token);
+  assert((await post('/api/verify', { order: tor.order })).token, 'approved Telegram channel post unlocks order');
+  globalThis.fetch = realFetch;
 
   // 4) Owner unlock code
   const code = await post('/api/admin', { key: 'test-admin', action: 'code', orderId: s2.id });

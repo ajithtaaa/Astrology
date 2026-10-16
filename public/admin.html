@@ -68,6 +68,7 @@
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="orders" aria-selected="true">Orders</button>
         <button role="tab" data-tab="payments">Payments received</button>
+        <button role="tab" data-tab="telegram">Telegram</button>
         <button role="tab" data-tab="webhooks">Webhook setup</button>
         <button role="tab" data-tab="settings">Settings</button>
       </div>
@@ -106,6 +107,41 @@
         <div class="card">
           <h2>Payments received</h2>
           <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Received</th><th>Amount</th><th>UTR</th><th>Source</th><th>Order</th><th>Message</th></tr></thead><tbody id="credits"></tbody></table></div>
+        </div>
+      </section>
+
+      <section data-panel="telegram" hidden>
+        <div class="grid2">
+          <div class="card">
+            <h2>Connect a Telegram bot</h2>
+            <div id="tg-status" class="muted">Loading…</div>
+            <form id="tg-form" class="form" style="padding:0;margin-top:12px">
+              <label class="field"><span>Bot token from @BotFather</span><input name="token" placeholder="123456789:AAH…" autocomplete="off"></label>
+              <div class="actions"><button class="btn btn-primary btn-sm" type="submit">Connect</button><button class="btn btn-ghost btn-sm" type="button" id="tg-disconnect">Disconnect</button><button class="btn btn-ghost btn-sm" type="button" id="tg-refresh">Refresh</button></div>
+            </form>
+            <h3>Chats</h3>
+            <p class="muted">For safety, only approved chats can confirm payments. Send any message in the chat or channel (or forward a payment notification there). It appears here, and you click <b>Approve</b>.</p>
+            <div class="tbl-wrap"><table class="tbl" style="min-width:0"><tbody id="tg-chats"></tbody></table></div>
+          </div>
+          <div class="card">
+            <h2>Setup – pick the option that matches your forwarder</h2>
+            <h3>A · Your phone app sends notifications through your own bot</h3>
+            <ol class="guide">
+              <li>Telegram → <b>@BotFather</b> → <code>/newbot</code>. This creates a second bot just for the website, e.g. <i>JeevithaPayBot</i>. Copy its token, paste it on the left and click <b>Connect</b>.</li>
+              <li>Create a private Telegram <b>channel</b> (e.g. "Payments"). Add <b>both</b> bots as <b>admins</b>: your "notifications forwarder" bot and the new website bot.</li>
+              <li>In your forwarder app, set the chat ID to that channel (channel IDs start with <code>-100</code>). Your forwarder bot posts into the channel and the website bot reads every post.</li>
+              <li>Post any test message in the channel, then approve the channel on the left.</li>
+            </ol>
+            <p class="note">Why two bots? Telegram never sends a bot its own messages, and bots can't read other bots in groups. In a channel where it's an admin, though, a bot sees every post.</p>
+            <h3>B · Notifications arrive from someone else's bot (you have no token)</h3>
+            <ol class="guide">
+              <li>Create the website bot as in A.1 and connect it.</li>
+              <li>Check whether your forwarder app can send to a <b>channel</b> or <b>custom chat ID</b>. If it can, use A.2–A.4.</li>
+              <li>If it can only message you privately, use the <b>Webhook setup</b> tab instead. Most forwarder apps can also POST to a URL.</li>
+            </ol>
+            <h3>C · Test it</h3>
+            <p class="muted">Post <code>Rs.1.00 received via UPI. UTR 123456789012</code> in the approved channel. A ₹1.00 row should appear under <b>Payments received</b> within a few seconds. In a private chat with the website bot, it also replies with the result.</p>
+          </div>
         </div>
       </section>
 
@@ -273,6 +309,32 @@
       const f = e.target;
       const settings = Object.fromEntries(['upiId', 'payee', 'priceSingle', 'priceFull', 'daysSingle', 'daysFull', 'whatsapp'].map((k) => [k, f[k].value]));
       try { await call('settings', { settings }); toast('Saved – the website uses the new settings within a minute'); load(); } catch (err) { toast(err.message); }
+    });
+
+
+    async function tgRender(st) {
+      const el = $('#tg-status');
+      el.innerHTML = st.connected
+        ? `✓ Connected as <b>@${esc(st.bot?.username)}</b>${st.webhook?.lastError ? `<br><span style="color:var(--bad)">Last Telegram error: ${esc(st.webhook.lastError)}</span>` : ''}${st.webhook?.pending ? `<br>${st.webhook.pending} updates waiting` : ''}`
+        : 'Not connected.';
+      const allowed = new Set(st.allowed.map(String));
+      const rows = [...st.allowed.map((id) => ({ id, title: (st.seen.find((x) => x.id === id) || {}).title || id, ok: true })),
+        ...st.seen.filter((c) => !allowed.has(c.id)).map((c) => ({ ...c, ok: false }))];
+      $('#tg-chats').innerHTML = rows.map((c) => `<tr><td><b>${esc(c.title)}</b><br><small class="muted">${esc(c.type || '')} · ${esc(c.id)}${c.sample ? ' · “' + esc(c.sample.slice(0, 60)) + '”' : ''}</small></td>
+        <td style="text-align:right">${c.ok ? `<span class="pill paid">approved</span> <button class="btn btn-ghost btn-sm" data-tgallow="${esc(c.id)}" data-v="0">Remove</button>` : `<button class="btn btn-primary btn-sm" data-tgallow="${esc(c.id)}" data-v="1">Approve</button>`}</td></tr>`).join('')
+        || '<tr><td class="muted">No chats yet. Send a message to the bot or post in its channel, then click Refresh.</td></tr>';
+    }
+    const tgLoad = () => call('tg_status').then(tgRender).catch((e) => { $('#tg-status').textContent = e.message; });
+    document.querySelector('[data-tab=telegram]').addEventListener('click', tgLoad);
+    $('#tg-refresh').onclick = tgLoad;
+    $('#tg-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { tgRender(await call('tg_connect', { token: e.target.token.value })); e.target.token.value = ''; toast('Telegram bot connected'); } catch (err) { toast(err.message); }
+    });
+    $('#tg-disconnect').onclick = async () => { if (confirm('Disconnect the Telegram bot?')) tgRender(await call('tg_disconnect')); };
+    document.addEventListener('click', async (e) => {
+      const id = e.target.dataset && e.target.dataset.tgallow;
+      if (id) tgRender(await call('tg_allow', { chatId: id, allow: e.target.dataset.v === '1' }));
     });
 
     if (key) load().catch(logout);
